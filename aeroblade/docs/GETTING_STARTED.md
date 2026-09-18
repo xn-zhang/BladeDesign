@@ -1,6 +1,6 @@
 # 克隆、服务管理、令牌与参数批量导入
 
-本页适用于完整 Git 仓库。除特别标明外，命令均在 **Linux / WSL 的 Bash** 中、仓库根目录执行。便携 ZIP 用户将 `bash scripts/start.sh` 替换为 `bash bridge/start-local.sh`，并去掉示例路径中的 `openfoam-bridge/`。
+本页适用于完整 Git 仓库。除特别标明外，命令均在 **Linux / WSL 的 Bash** 中、仓库根目录执行。便携 ZIP 用户将 `bash scripts/start.sh` 替换为 `bash bridge/start-local.sh`，并去掉示例路径中的 `aeroblade/`。
 
 ## 1. 克隆到本地
 
@@ -31,8 +31,8 @@ command -v blockMesh snappyHexMesh extrudeMesh createPatch checkMesh rhoSimpleFo
 
 ```bash
 # templates/pritchard-cascade-2d 已存在时跳过生成
-test -f openfoam-bridge/templates/pritchard-cascade-2d/aeroblade-template.json || \
-  python3 openfoam-bridge/bridge/create_pritchard_cascade.py
+test -f aeroblade/templates/pritchard-cascade-2d/aeroblade-template.json || \
+  python3 aeroblade/bridge/create_pritchard_cascade.py
 bash scripts/start.sh --max-parallel 2 --max-pending 16 --case-threads 1
 ```
 
@@ -48,7 +48,7 @@ FOAM_BASHRC=/实际路径/etc/bashrc bash scripts/start.sh
 - **重启服务**：先停止，再执行相同启动命令。不要重复启动占用同一端口的进程。
 - **只停止一个算例**：网页选中任务后点击“停止任务”；其他任务继续运行。
 - 关闭网页或点击“断开连接”不会停止计算。停止服务会取消其未完成任务；异常退出后重启会将遗留未完成任务标记为中断，不会自动续算。
-- 历史记录和结果保存在 `openfoam-bridge/jobs/`；停止服务不删除它们。并发设置在网页调整后仅对当前进程生效，重启以命令行配置为准。
+- 历史记录和结果保存在 `aeroblade/jobs/`；停止服务不删除它们。并发设置在网页调整后仅对当前进程生效，重启以命令行配置为准。
 
 ### 保持终端会话运行（可选 tmux）
 
@@ -156,17 +156,17 @@ Pritchard 设计文件示例：
 
 目前的批量途径是 **为每份设计构建请求，逐个调用 API，服务器按计算槽位并行运行**；网页尚无参数表批量导入界面。批量提交不会把所有设计同时载入设计面板。
 
-1. 准备多份上节格式的设计 JSON，放入 `openfoam-bridge/runtime/batch/designs/`，一文件一设计。
-2. 网页连接服务，选择匹配模板并设定工况，导出“请求 JSON”，保存为 `openfoam-bridge/runtime/batch/base-request.json`。该文件 schema 是 `aeroblade-cfd-v1`，必须包含有效 template_id 和 conditions；未连接服务导出的空模板请求不能求解。
+1. 准备多份上节格式的设计 JSON，放入 `aeroblade/runtime/batch/designs/`，一文件一设计。
+2. 网页连接服务，选择匹配模板并设定工况，导出“请求 JSON”，保存为 `aeroblade/runtime/batch/base-request.json`。该文件 schema 是 `aeroblade-cfd-v1`，必须包含有效 template_id 和 conditions；未连接服务导出的空模板请求不能求解。
 3. 下例使用同一套工况、逐份替换 parameters，以文件名命名任务。若需要不同工况，可另外准备各自的请求。每次提交都是独立网格与求解，不是对已有场简单更换标签。
 
 先创建目录，再放入上述文件：
 
 ```bash
-mkdir -p openfoam-bridge/runtime/batch/designs
+mkdir -p aeroblade/runtime/batch/designs
 ```
 
-将下面代码保存为 `openfoam-bridge/runtime/batch/submit.py`。它先检查全部文件格式，再逐个提交，记录已接受的任务 ID；队列满时退出，稍后可重新执行跳过已记录文件。网络错误不会自动重发，避免产生重复计算。
+将下面代码保存为 `aeroblade/runtime/batch/submit.py`。它先检查全部文件格式，再逐个提交，记录已接受的任务 ID；队列满时退出，稍后可重新执行跳过已记录文件。网络错误不会自动重发，避免产生重复计算。
 
 ```python
 import copy
@@ -226,10 +226,10 @@ for name, payload in requests:
 运行：
 
 ```bash
-python3 openfoam-bridge/runtime/batch/submit.py
+python3 aeroblade/runtime/batch/submit.py
 # 其他服务地址（令牌仍通过不回显输入提供）
 AEROBLADE_URL=https://your-compute.example \
-  python3 openfoam-bridge/runtime/batch/submit.py
+  python3 aeroblade/runtime/batch/submit.py
 ```
 
 该示例不执行完整几何预检；服务在接收/准备阶段继续校验参数、模板及实际几何。已提交不等于已完成或已收敛，后续在网页任务列表查看每个任务。

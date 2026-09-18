@@ -4,7 +4,7 @@ AeroBlade 是一个本地运行的叶片参数化设计与 OpenFOAM CFD 工作�
 
 ## 当前功能
 
-- 对话式初始设计入口：总师智能体需求对话、图19参考演示、11参数方案审阅与校验、带参进入叶片设计及手动跳过。支持会话恢复、停止和重试；真实大模型后端待接入，见[接口协议](openfoam-bridge/docs/DESIGN_ASSISTANT_API.md)。
+- 对话式初始设计入口：总师智能体需求对话、图19参考演示、11参数方案审阅与校验、带参进入叶片设计及手动跳过。支持会话恢复、停止和重试；真实大模型后端待接入，见[接口协议](aeroblade/docs/DESIGN_ASSISTANT_API.md)。
 - Pritchard 1985十一参数截面设计、五段解析轮廓、派生几何指标与直线拉伸三维展示。
 - 新旧模型显式切换、设计JSON及STL/截面CSV导出，旧版概念几何保留兼容。
 - OpenFOAM 服务连接、二维冷态周期叶栅网格生成、检查及求解。
@@ -13,7 +13,7 @@ AeroBlade 是一个本地运行的叶片参数化设计与 OpenFOAM CFD 工作�
 - 三维有限展宽端壁叶栅探索：真实体网格、三分量速度求解及VTK导出；首轮3000步尚未收敛。
 - AI 预测工作区布局：数据与输入、三条模型路线、建模流程、流场预览、六项气动指标、训练状态及基线对比。当前为前端界面预览，支持路线切换与面板展开；数据处理、训练和预测尚未接入，业务按钮保持禁用。
 
-当前Pritchard参考截面已完成7092单元二维计算，在2092步报告收敛；严格几何诊断仍发现290个凹单元，详见[Pritchard验证记录](openfoam-bridge/docs/PRITCHARD_VALIDATION.md)。尚未实现经验证的三维CFD、自动优化或工程精度验证。旧模型验证记录单独保留，原始任务数据不随仓库发布，应在本机复算验证。
+当前Pritchard参考截面已完成7092单元二维计算，在2092步报告收敛；严格几何诊断仍发现290个凹单元，详见[Pritchard验证记录](aeroblade/docs/PRITCHARD_VALIDATION.md)。尚未实现经验证的三维CFD、自动优化或工程精度验证。旧模型验证记录单独保留，原始任务数据不随仓库发布，应在本机复算验证。
 
 ## 克隆与启动（Linux / WSL）
 
@@ -23,8 +23,8 @@ AeroBlade 是一个本地运行的叶片参数化设计与 OpenFOAM CFD 工作�
 git clone https://github.com/xn-zhang/BladeDesign.git
 cd BladeDesign
 # 模板已存在时跳过生成
-test -f openfoam-bridge/templates/pritchard-cascade-2d/aeroblade-template.json || \
-  python3 openfoam-bridge/bridge/create_pritchard_cascade.py
+test -f aeroblade/templates/pritchard-cascade-2d/aeroblade-template.json || \
+  python3 aeroblade/bridge/create_pritchard_cascade.py
 bash scripts/start.sh --max-parallel 2 --max-pending 16
 ```
 
@@ -48,7 +48,7 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/aeroblade/api-token"
 - **批量设计**：目前网页一次只导入一个文件；多份设计通过 `POST /api/jobs` 逐个提交，由服务按计算槽位并行运行。完整指南提供可复制的批量提交 Python 示例及提交记录、队列满和重试处理说明。
 - **Excel/CSV**：需先逐行转换为设计 JSON。截面坐标 CSV 和 STL 不是可重新导入的参数文件。
 
-**[完整操作指南：克隆、启停、远程连接、令牌、参数格式与批量提交](openfoam-bridge/docs/GETTING_STARTED.md)**
+**[完整操作指南：克隆、启停、远程连接、令牌、参数格式与批量提交](aeroblade/docs/GETTING_STARTED.md)**
 
 ## 项目结构
 
@@ -56,7 +56,7 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/aeroblade/api-token"
 .github/workflows/       GitHub 自动检查
 scripts/                 仓库级启动、检查和打包入口
 tests/                   共享几何引擎回归测试
-openfoam-bridge/
+aeroblade/
   web/                   网页源码与共享几何引擎
   bridge/                Python API、任务执行、几何调用与算例生成器
     tests/               单元测试和流程夹具
@@ -68,7 +68,7 @@ openfoam-bridge/
   runtime/               本机日志、截图与调试文件（忽略）
 ```
 
-保留 `openfoam-bridge/` 作为独立可打包应用目录，便于保持现有任务路径稳定。
+`aeroblade/` 是完整的 AeroBlade 工作台应用目录，包含叶片设计界面、AI 工作区、CFD 服务与算例模板，可独立打包部署。
 
 ## 开发与验证
 
@@ -77,15 +77,15 @@ bash scripts/check.sh
 bash scripts/package.sh
 ```
 
-自动检查包括 Python 测试、JavaScript 语法和发布包结构，不需要 OpenFOAM。流程夹具模拟命令输出，不代表真实 CFD 验证。发布包输出到 `openfoam-bridge/dist/openfoam-bridge.zip`，可解压独立运行。
+自动检查包括 Python 测试、JavaScript 语法和发布包结构，不需要 OpenFOAM。流程夹具模拟命令输出，不代表真实 CFD 验证。发布包输出到 `aeroblade/dist/aeroblade.zip`，可解压独立运行。
 
-- [计算服务及接口说明](openfoam-bridge/bridge/README.md)
-- [多算例并行计算与配置](openfoam-bridge/docs/PARALLEL_CASES.md)
-- [三维探索结果与未通过项](openfoam-bridge/docs/THREE_D_VALIDATION.md)
-- [Pritchard参数定义与公式](openfoam-bridge/docs/PRITCHARD.md)
-- [二维算例说明](openfoam-bridge/docs/CASCADE.md)
-- [真实计算验证记录](openfoam-bridge/docs/CASCADE_VALIDATION.md)
-- [流场可视化](openfoam-bridge/docs/FLOW_VIEW.md)
+- [计算服务及接口说明](aeroblade/bridge/README.md)
+- [多算例并行计算与配置](aeroblade/docs/PARALLEL_CASES.md)
+- [三维探索结果与未通过项](aeroblade/docs/THREE_D_VALIDATION.md)
+- [Pritchard参数定义与公式](aeroblade/docs/PRITCHARD.md)
+- [二维算例说明](aeroblade/docs/CASCADE.md)
+- [真实计算验证记录](aeroblade/docs/CASCADE_VALIDATION.md)
+- [流场可视化](aeroblade/docs/FLOW_VIEW.md)
 - [贡献与开发约定](CONTRIBUTING.md)
 
 ## GitHub 同步范围

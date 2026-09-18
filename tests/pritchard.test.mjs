@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reference,sectionGeometry} from '../openfoam-bridge/web/pritchard.js';
-import {build,validate} from '../openfoam-bridge/web/geometry.js';
+import {reference,sectionGeometry} from '../aeroblade/web/pritchard.js';
+import {build,validate} from '../aeroblade/web/geometry.js';
 const near=(a,b,eps=1e-8)=>assert.ok(Math.abs(a-b)<eps,`${a} != ${b}`),dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
 test('Figure 19 pitch, throat and printed 3.31 degree exit half-wedge',()=>{
  const g=sectionGeometry(reference);near(g.pitch/25.4,.67759841548,1e-10);near(g.throat/25.4,.337,5e-4);near(g.exitHalfWedge,3.31,.005);

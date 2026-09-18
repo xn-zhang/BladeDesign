@@ -42,9 +42,9 @@ def make_server(host,port,manager,token,origins):
             if not path.startswith('/api/'):
                 if self.command!='GET':self.send_json({'error':'Not found'},404);return
                 # Only deployable public assets; never serve bridge source, jobs or templates.
-                allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/openfoam-bridge.zip':'openfoam-bridge.zip'}
+                allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/aeroblade.zip':'aeroblade.zip'}
                 if path not in allow:raise KeyError('Not found')
-                self.send_file(ROOT/('dist' if path=='/openfoam-bridge.zip' else 'web')/allow[path]);return
+                self.send_file(ROOT/('dist' if path=='/aeroblade.zip' else 'web')/allow[path]);return
             if not self.authorized():return
             if self.command=='GET' and path=='/api/health':self.send_json(manager.health());return
             if path=='/api/scheduler':
@@ -89,7 +89,7 @@ def main():
     origins={s.strip().rstrip('/') for s in os.environ.get('AEROBLADE_ALLOWED_ORIGINS','').split(',') if s.strip()}
     origins.update({'http://127.0.0.1:'+str(args.port),'http://localhost:'+str(args.port)})
     from package import package
-    if not (ROOT/'dist/openfoam-bridge.zip').is_file():package()
+    if not (ROOT/'dist/aeroblade.zip').is_file():package()
     try:manager=Manager(args.jobs,args.templates,args.timeout,max_parallel=args.max_parallel,max_pending=args.max_pending,case_threads=args.case_threads)
     except ValueError as e:parser.error(str(e))
     http=make_server(args.host,args.port,manager,token,origins)

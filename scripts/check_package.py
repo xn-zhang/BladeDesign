@@ -2,7 +2,7 @@
 from pathlib import Path
 import zipfile
 root = Path(__file__).resolve().parents[1]
-with zipfile.ZipFile(root / 'openfoam-bridge/dist/openfoam-bridge.zip') as archive:
+with zipfile.ZipFile(root / 'aeroblade/dist/aeroblade.zip') as archive:
     names = set(archive.namelist())
     assert archive.testzip() is None
     assert {'README.md', 'web/index.html', 'web/geometry.js', 'bridge/server.py',

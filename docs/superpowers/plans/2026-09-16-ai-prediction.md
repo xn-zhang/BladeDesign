@@ -16,18 +16,18 @@
 - 当前 CFD 服务仍要求 Python 3.10+、Node.js 20+，不强制安装机器学习库。
 - 所有归一化器、PCA（若以后添加）和超参数选择只使用训练/验证集合。
 - 迭代上限、运行时长、收敛步数、CFD 出口速度、真实流量和真实 Mach 数不作为输入。
-- 数据与权重写入被忽略的 `openfoam-bridge/ai-data/`。
+- 数据与权重写入被忽略的 `aeroblade/ai-data/`。
 - 人工场和流程夹具不计入真实 CFD 数据集。
 - 本计划任务尚未执行；当前已完成详细设计和只读数据盘点。
 
 ## 执行前检查
 
-- [ ] 读取设计第 3 节和 `openfoam-bridge/docs/AI_DATA_INVENTORY.md`，确认当前只有三个二维 Pritchard 参数几何组，不启动正式 benchmark。
+- [ ] 读取设计第 3 节和 `aeroblade/docs/AI_DATA_INVENTORY.md`，确认当前只有三个二维 Pritchard 参数几何组，不启动正式 benchmark。
 - [ ] 检查工作区及 Git 状态；本次盘点时仓库没有首个提交、原有源码均未跟踪。不要把全部源码当作本功能新文件提交。工作区隔离或提交只包含本任务明确生成的文件，记录基准状态。
 - [ ] 确认 Linux/WSL Python 与 Node 路径，运行现有回归；不安装依赖到现有 CFD Python。
 
 ```bash
-cd openfoam-bridge
+cd aeroblade
 python3 -m unittest discover -s bridge/tests -v
 node --test ../tests/*.test.mjs
 ```
@@ -53,7 +53,7 @@ node --test ../tests/*.test.mjs
 | `web/workspaces.js`、`web/ai.js`、`web/ai.css` | 三工作区切换与预测 UI |
 | `ai/tests/` | 数值、模型、数据协议测试 |
 
-表内路径相对 `openfoam-bridge/`。AI 包的 `__init__.py` 和 `models/__init__.py` 不进行 eager ML 导入。桥接服务测试放在原 `bridge/tests/`。具体协议均由设计文档定义。
+表内路径相对 `aeroblade/`。AI 包的 `__init__.py` 和 `models/__init__.py` 不进行 eager ML 导入。桥接服务测试放在原 `bridge/tests/`。具体协议均由设计文档定义。
 
 ## Task 1 — 只读网格/场导出与质量分层
 

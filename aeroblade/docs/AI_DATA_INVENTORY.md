@@ -1,6 +1,6 @@
 # AI 第一阶段数据盘点
 
-盘点日期：2026-09-16。来源：本机 `openfoam-bridge/jobs/` 中的 `job.json`、已有 `validation.json`、正时间目录及 U/p/T 文件存在性。此次未重新运行 OpenFOAM、未修改算例、未执行完整场数值审计。
+盘点日期：2026-09-16。来源：本机 `aeroblade/jobs/` 中的 `job.json`、已有 `validation.json`、正时间目录及 U/p/T 文件存在性。此次未重新运行 OpenFOAM、未修改算例、未执行完整场数值审计。
 
 ## 任务数量
 

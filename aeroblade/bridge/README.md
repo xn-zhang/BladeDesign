@@ -1,6 +1,6 @@
 # AeroBlade × OpenFOAM 计算桥接服务
 
-首次使用请先阅读 [克隆后的启动与停止、令牌获取、远程连接及批量参数导入](../docs/GETTING_STARTED.md)。下文命令以 `openfoam-bridge/` 或解压目录为工作目录。
+首次使用请先阅读 [克隆后的启动与停止、令牌获取、远程连接及批量参数导入](../docs/GETTING_STARTED.md)。下文命令以 `aeroblade/` 或解压目录为工作目录。
 
 当前默认设计方法为 [Pritchard 1985](../docs/PRITCHARD.md)，使用 `python3 bridge/create_pritchard_cascade.py` 生成配套模板。下文冷态旧模板及2026-09-08验证属于历史概念几何，不是Pritchard截面的验证结果。
 

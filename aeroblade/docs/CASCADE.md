@@ -21,7 +21,7 @@ snappy 阶段保留周期面以保持匹配点；挤出前服务只将这两个�
 
 ## 使用与重建
 
-从 openfoam-bridge 目录执行 `python3 bridge/create_cascade.py`，生成 templates/cold-periodic-cascade-2d；已有目录时拒绝覆盖。
+从 aeroblade 目录执行 `python3 bridge/create_cascade.py`，生成 templates/cold-periodic-cascade-2d；已有目录时拒绝覆盖。
 执行 `bash bridge/start-local.sh`，在工作台连接后选择“二维冷态周期叶栅”，点击“应用模板推荐叶片”，再提交真实仿真。
 默认令牌位于 WSL `~/.local/state/aeroblade/api-token`。在自己的终端读取并填入网页，勿发到聊天中。
 推荐请求位于 `templates/cold-periodic-cascade-2d/recommended-request.json`。

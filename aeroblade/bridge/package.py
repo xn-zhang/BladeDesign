@@ -4,7 +4,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 def package():
-    target = ROOT / 'dist/openfoam-bridge.zip'
+    target = ROOT / 'dist/aeroblade.zip'
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp')
     allowed = {'.py', '.mjs', '.js', '.css', '.html', '.md', '.sh', '.json'}

@@ -1,7 +1,7 @@
 # Local computations and generated distributions
-openfoam-bridge/jobs/
-openfoam-bridge/runtime/
-openfoam-bridge/dist/
+aeroblade/jobs/
+aeroblade/runtime/
+aeroblade/dist/
 __pycache__/
 *.py[cod]
 .venv/

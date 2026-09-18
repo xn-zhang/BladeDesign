@@ -20,7 +20,7 @@
 
 ## Task 1 — 方案协议、演示和数据校验
 
-Files: 新建 `openfoam-bridge/web/design-assistant-client.js`、`tests/design-assistant.test.mjs`。
+Files: 新建 `aeroblade/web/design-assistant-client.js`、`tests/design-assistant.test.mjs`。
 
 Interfaces: `validateProposal(raw)` 返回独立副本；`validateReply(raw)` 返回 message/proposal；`demoReply(message)` 只对“载入参考方案”返回预设；`requestAssistant({provider,messages,signal,fetchImpl})` 返回 Promise。
 
@@ -29,7 +29,7 @@ Interfaces: `validateProposal(raw)` 返回独立副本；`validateReply(raw)` �
 - [x] 实现严格协议，实际调用 `validate` 和 `analyze`；请求 `POST /api/design-assistant/chat`，支持 AbortSignal。
 - [x] 运行上述测试并检查通过。
 
-协议示意（完整定义见 `openfoam-bridge/docs/DESIGN_ASSISTANT_API.md`）：
+协议示意（完整定义见 `aeroblade/docs/DESIGN_ASSISTANT_API.md`）：
 
 ```js
 {schema:'aeroblade-assistant-reply-v1', message:'请补充入口工况', proposal:null}
@@ -37,7 +37,7 @@ Interfaces: `validateProposal(raw)` 返回独立副本；`validateReply(raw)` �
 
 ## Task 2 — 对话状态、首屏与方案卡
 
-Files: 新建 `openfoam-bridge/web/design-assistant.js`、`design-assistant.css`。
+Files: 新建 `aeroblade/web/design-assistant.js`、`design-assistant.css`。
 
 Interface: `initDesignAssistant({applyDesign,openDesign})` 返回供导航注册的 section。
 
@@ -49,7 +49,7 @@ Interface: `initDesignAssistant({applyDesign,openDesign})` 返回供导航注册
 
 ## Task 3 — 工作区集成和 API 接入文档
 
-Files: 修改 `web/cfd.js`、`web/index.html`、`README.md`；新建 `openfoam-bridge/docs/DESIGN_ASSISTANT_API.md`。
+Files: 修改 `web/cfd.js`、`web/index.html`、`README.md`；新建 `aeroblade/docs/DESIGN_ASSISTANT_API.md`。
 
 - [x] 在既有导航注册“初始设计”，默认进入；手动跳转和确认跳转均走原工作区切换函数。
 - [x] 全部工作区保留设计导入/导出动作并共用顶部栏布局；设计、CFD、AI 导航及快捷键保持可用。

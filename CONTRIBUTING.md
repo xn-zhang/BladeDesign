@@ -1,6 +1,6 @@
 # 开发约定
 
-1. 网页修改放在 `openfoam-bridge/web/`；服务修改放在 `openfoam-bridge/bridge/`。
+1. 网页修改放在 `aeroblade/web/`；服务修改放在 `aeroblade/bridge/`。
 2. `web/geometry.js` 同时被浏览器和 Node.js 几何生成器使用，变更需兼顾两端。
 3. 执行 `bash scripts/check.sh`；提交前检查 `git status --short`。
 4. 算例模板只提交初始场和字典，不提交生成网格、时间步结果或机器私有路径。

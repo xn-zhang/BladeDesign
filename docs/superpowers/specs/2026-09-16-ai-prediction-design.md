@@ -18,20 +18,20 @@
 
 | 现有文件 | 现状与复用方式 |
 |---|---|
-| `openfoam-bridge/web/geometry.js`、`pritchard.js` | 浏览器和 Node 共用几何引擎；继续作为轮廓生成的唯一来源 |
-| `openfoam-bridge/bridge/pritchard_model.py` | 参数范围检查、节距及斜置域计算；作为几何元数据来源 |
-| `openfoam-bridge/bridge/core.py` | CFD 生命周期、请求快照、任务目录；扩展网格阶段复用，不把训练放入其工作线程 |
-| `openfoam-bridge/bridge/flow.py` | ASCII 单层二维场展示；当前只向前端暴露速度大小，训练需另读矢量及边界场 |
-| `openfoam-bridge/bridge/validate_result.py` | 现有收敛、质量守恒、网格质量审计；提取只读审计核心，保留原 CLI 写报告行为 |
-| `openfoam-bridge/bridge/server.py` | Python 标准库 HTTP、鉴权、静态文件 allowlist；增加 AI 路由和公开静态文件 |
-| `openfoam-bridge/web/cfd.js`、`flow-view.js` | 工作区和流场渲染接入；不能把 AI 数据伪装成 CFD 完成任务 |
+| `aeroblade/web/geometry.js`、`pritchard.js` | 浏览器和 Node 共用几何引擎；继续作为轮廓生成的唯一来源 |
+| `aeroblade/bridge/pritchard_model.py` | 参数范围检查、节距及斜置域计算；作为几何元数据来源 |
+| `aeroblade/bridge/core.py` | CFD 生命周期、请求快照、任务目录；扩展网格阶段复用，不把训练放入其工作线程 |
+| `aeroblade/bridge/flow.py` | ASCII 单层二维场展示；当前只向前端暴露速度大小，训练需另读矢量及边界场 |
+| `aeroblade/bridge/validate_result.py` | 现有收敛、质量守恒、网格质量审计；提取只读审计核心，保留原 CLI 写报告行为 |
+| `aeroblade/bridge/server.py` | Python 标准库 HTTP、鉴权、静态文件 allowlist；增加 AI 路由和公开静态文件 |
+| `aeroblade/web/cfd.js`、`flow-view.js` | 工作区和流场渲染接入；不能把 AI 数据伪装成 CFD 完成任务 |
 | `scripts/check.sh`、`scripts/check_package.py` | 回归及发布包验证；增加 AI 无依赖测试与独立 ML 检查入口 |
 
 当前 CFD 服务仍要求 Python 3.10+、Node.js 20+，不强制安装机器学习库。ML worker 使用独立 Python 3.10+ 虚拟环境，依赖 NumPy、SciPy、scikit-learn、PyTorch 和 PyTorch Geometric；安装验证后记录精确版本和 CPU/CUDA 构建信息。禁止先编造未经验证的版本锁。
 
 ## 3. 当前数据证据与质量分层
 
-只读元数据盘点见 [数据盘点](../../../openfoam-bridge/docs/AI_DATA_INVENTORY.md)。本机 23 个任务中，Pritchard 二维有 10 个记录：8 个 completed、2 个 failed；8 个完成记录覆盖 3 组几何，5 个记录标为 `solver_reported`。三组几何只改变半径，其他十参数不变，收敛记录物理工况也相同。
+只读元数据盘点见 [数据盘点](../../../aeroblade/docs/AI_DATA_INVENTORY.md)。本机 23 个任务中，Pritchard 二维有 10 个记录：8 个 completed、2 个 failed；8 个完成记录覆盖 3 组几何，5 个记录标为 `solver_reported`。三组几何只改变半径，其他十参数不变，收敛记录物理工况也相同。
 
 现有数据用于解析、标签、形状匹配及小样本过拟合检查，不能据此发布跨十一参数和工况的泛化结论。任务数、独立几何数、独立几何×工况数必须分别报告。
 
@@ -47,7 +47,7 @@
 
 ### 4.1 样本及版本
 
-新增 `openfoam-bridge/ai/`，数据与权重写入被忽略的 `openfoam-bridge/ai-data/`。
+新增 `aeroblade/ai/`，数据与权重写入被忽略的 `aeroblade/ai-data/`。
 
 ```text
 ai-data/
@@ -248,7 +248,7 @@ blade 的 Sf 为流体域外法向，指向叶片内部，故该积分表达流�
 - [PyG 消息传递接口](https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html?highlight=gcn)
 - [FNO 原始论文](https://arxiv.org/abs/2010.08895)
 - [GINO 原始论文，后续候选](https://arxiv.org/abs/2309.00583)
-- [现有参数约定](../../../openfoam-bridge/docs/PRITCHARD.md)
-- [现有场展示约定](../../../openfoam-bridge/docs/FLOW_VIEW.md)
+- [现有参数约定](../../../aeroblade/docs/PRITCHARD.md)
+- [现有场展示约定](../../../aeroblade/docs/FLOW_VIEW.md)
 
 自审：已覆盖几何/工况、数据质量、反泄漏、周期图、算子和边界解码、指标公式、进程/API/UI、成本、失败处理与验收；未为现有数据虚构精度或训练结果。

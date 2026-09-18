@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reference} from '../openfoam-bridge/web/pritchard.js';
-import {validateProposal, validateReply, requestAssistant, demoReply} from '../openfoam-bridge/web/design-assistant-client.js';
+import {reference} from '../aeroblade/web/pritchard.js';
+import {validateProposal, validateReply, requestAssistant, demoReply} from '../aeroblade/web/design-assistant-client.js';
 
 const proposal = () => ({schema:'aeroblade-initial-proposal-v1', units:{length:'mm',angle:'deg'}, parameters:{...reference}, sources:Object.fromEntries(Object.keys(reference).filter(k=>!['model','height'].includes(k)).map(k=>[k,'图19参考算例'])), aerodynamic:[], assumptions:['参考尺寸'], missing:[], warnings:['尚未进行气动评估']});
 test('complete proposals preserve all eleven parameters and provenance', () => {
