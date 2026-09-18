@@ -1,0 +1,23 @@
+{
+  "id": "stationary-cascade",
+  "name": "定常可压缩叶栅 · 自有已验证算例",
+  "description": "由计算端维护的静止叶栅模板；安装前必须完成物理与网格验证。",
+  "solver": "rhoSimpleFoam",
+  "geometry_file": "constant/triSurface/blade.stl",
+  "geometry_bounds_m": [[-0.10, -0.10, -0.10], [0.10, 0.10, 0.10]],
+  "inputs": [
+    {"key": "inletTotalPressure", "label": "入口总压", "unit": "Pa", "min": 100000, "max": 3000000, "default": 200000, "token": "INLET_TOTAL_PRESSURE_PA"},
+    {"key": "inletTotalTemperature", "label": "入口总温", "unit": "K", "min": 250, "max": 2000, "default": 300, "token": "INLET_TOTAL_TEMPERATURE_K"},
+    {"key": "outletStaticPressure", "label": "出口静压", "unit": "Pa", "min": 10000, "max": 3000000, "default": 100000, "token": "OUTLET_STATIC_PRESSURE_PA"},
+    {"key": "iterations", "label": "迭代上限", "unit": "", "min": 100, "max": 10000, "default": 1500, "integer": true, "token": "ITERATIONS"}
+  ],
+  "constraints": [{"left": "inletTotalPressure", "op": ">", "right": "outletStaticPressure"}],
+  "pipeline": [
+    ["blockMesh"],
+    ["surfaceFeatureExtract"],
+    ["snappyHexMesh", "-overwrite"],
+    ["checkMesh", "-allTopology", "-allGeometry"],
+    ["rhoSimpleFoam"],
+    ["foamToVTK", "-latestTime"]
+  ]
+}

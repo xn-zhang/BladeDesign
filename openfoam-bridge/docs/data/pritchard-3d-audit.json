@@ -1,0 +1,63 @@
+{
+  "solution_dimensions": 3,
+  "latest_written_time": "3000",
+  "finite_values": {
+    "U": true,
+    "C": true
+  },
+  "endwall_types": {
+    "spanLow": "wall",
+    "spanHigh": "wall"
+  },
+  "endwall_face_counts": {
+    "spanLow": 2306,
+    "spanHigh": 2306
+  },
+  "endwall_count": 2,
+  "noSlip": true,
+  "temperature_zeroGradient": true,
+  "z_min": -0.004900008737,
+  "z_max": 0.004900008735,
+  "z_span": 0.009800017472,
+  "bin_edges": [
+    -0.004900008737,
+    -0.0029400052426000003,
+    -0.0009800017482000005,
+    0.0009800017461999997,
+    0.002940005240599999,
+    0.004900008734999999
+  ],
+  "bins": {
+    "count": 5,
+    "counts": [
+      9264,
+      10348,
+      9028,
+      10348,
+      9264
+    ],
+    "mean_speed": [
+      10.37147761850858,
+      11.749406384256666,
+      11.431893825485966,
+      11.753854805485801,
+      10.371715850006366
+    ],
+    "mean_abs_Uz": [
+      0.3692922294073644,
+      0.19729503742220267,
+      0.05521007780275679,
+      0.19770352518177373,
+      0.36964290030519975
+    ]
+  },
+  "maxabsUz": 1.487278214,
+  "workflow_3d_verified": false,
+  "three_dimensional_flow_detected": true,
+  "limitations": [
+    "Cold stationary RANS workflow test; no experimental validation or grid independence.",
+    "First-order upwind and no prism layers; losses and efficiency are not validated.",
+    "Strict allGeometry convexity diagnostics are reported separately; the gate uses topology and explicit meshQuality thresholds.",
+    "Detection requires maxabsUz and span-binned mean-speed variation above max(1e-8, 1e-5 * typical speed); adaptive XY sampling can bias unweighted means, so this is not engineering validation."
+  ]
+}

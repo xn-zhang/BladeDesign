@@ -1,0 +1,4 @@
+FoamFile {version 2.0; format ascii; class volScalarField; object p;}
+dimensions [1 -1 -2 0 0 0 0];
+internalField uniform {{OUTLET_STATIC_PRESSURE_PA}};
+boundaryField { periodicLow {type cyclic;} periodicHigh {type cyclic;} spanLow {type zeroGradient;} spanHigh {type zeroGradient;} inlet {type totalPressure; p0 uniform {{INLET_TOTAL_PRESSURE_PA}}; gamma 1.4; psi thermo:psi; rho none; value uniform {{INLET_TOTAL_PRESSURE_PA}};} outlet {type fixedValue; value uniform {{OUTLET_STATIC_PRESSURE_PA}};} blade {type zeroGradient;} }

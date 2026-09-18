@@ -1,0 +1,23 @@
+{
+  "schema": "aeroblade-cfd-v1",
+  "template_id": "cold-periodic-cascade-2d",
+  "parameters": {
+    "chord": 40,
+    "thickness": 12,
+    "position": 35,
+    "inlet": 10,
+    "outlet": -5,
+    "stagger": 0,
+    "height": 60,
+    "taper": 1,
+    "twist": 0,
+    "sweep": 0,
+    "lean": 0
+  },
+  "conditions": {
+    "inletTotalPressure": 100200,
+    "inletTotalTemperature": 300,
+    "outletStaticPressure": 100000,
+    "iterations": 3000
+  }
+}

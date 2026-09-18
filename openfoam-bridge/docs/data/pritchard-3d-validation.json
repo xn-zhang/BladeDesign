@@ -1,0 +1,84 @@
+{
+  "solution_dimensions": 3,
+  "max_abs_spanwise_velocity": 1.487278214,
+  "job_id": "bc1ecc2c8833435ea53830c541f4f3e7",
+  "solver": "rhoSimpleFoam",
+  "last_solved_iteration": 3000.0,
+  "latest_written_time": "3000",
+  "checks": {
+    "periodic_pair_valid": true,
+    "planar_velocity_valid": true,
+    "completed": true,
+    "mesh_quality_passed": true,
+    "solver_end": true,
+    "solver_reported_convergence": false,
+    "residuals_below_1e_minus5": false,
+    "mass_balance_below_01_percent": true,
+    "fields_finite": true,
+    "pressure_temperature_positive": true,
+    "vtk_exported": true,
+    "archive_present": true
+  },
+  "workflow_verified": false,
+  "mesh": {
+    "cells": 48252.0,
+    "max_non_orthogonality": 55.86357967,
+    "max_skewness": 2.214039955
+  },
+  "final_initial_residuals": {
+    "Ux": 2.615979635e-05,
+    "Uy": 5.362146135e-06,
+    "Uz": 0.0001848632577,
+    "h": 2.995318614e-05,
+    "p": 0.001057490535,
+    "omega": 2.76514984e-06,
+    "k": 1.709469867e-05
+  },
+  "mass_flow_kg_s": {
+    "inlet": -0.001681061954,
+    "outlet": 0.001681061954
+  },
+  "relative_mass_imbalance": 0.0,
+  "field_ranges": {
+    "p": {
+      "min": 99755.24449,
+      "max": 100215.0023,
+      "finite": true
+    },
+    "T": {
+      "min": 299.8206001,
+      "max": 299.9967548,
+      "finite": true
+    },
+    "U": {
+      "min": -14.70708133,
+      "max": 17.13678262,
+      "finite": true
+    },
+    "k": {
+      "min": 0.002897119219,
+      "max": 3.419836227,
+      "finite": true
+    },
+    "omega": {
+      "min": 482.1878258,
+      "max": 911274.1196,
+      "finite": true
+    }
+  },
+  "limitations": [
+    "Cold stationary RANS workflow test; no experimental validation or grid independence.",
+    "First-order upwind and no prism layers; losses and efficiency are not validated.",
+    "Strict allGeometry convexity diagnostics are reported separately; the gate uses topology and explicit meshQuality thresholds."
+  ],
+  "strict_geometry_diagnostic": {
+    "passed": false,
+    "concave_cells": 1996,
+    "log": "strict-checkMesh.log"
+  },
+  "blade_y_plus": {
+    "min": 0.595712481,
+    "max": 16.60648536,
+    "average": 7.150291928
+  }
+}

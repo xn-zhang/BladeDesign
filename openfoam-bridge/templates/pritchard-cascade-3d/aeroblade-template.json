@@ -1,0 +1,110 @@
+{
+  "id": "pritchard-cascade-3d",
+  "name": "Pritchard · 三维端壁叶栅（探索）",
+  "description": "3D有限展宽10 mm / 两侧静止绝热无滑移端壁 / 周期叶栅 / 等截面Pritchard叶型。冷态SST，一阶迎风、无棱柱层；尚非扭转叶片、旋转叶排或工程精度验证。三维场请下载VTK查看。",
+  "solver": "rhoSimpleFoam",
+  "geometry_file": "constant/triSurface/blade.stl",
+  "geometry_bounds_m": [
+    [
+      -0.06,
+      -0.12,
+      -0.08
+    ],
+    [
+      0.06,
+      0.12,
+      0.08
+    ]
+  ],
+  "inputs": [
+    {
+      "key": "inletTotalPressure",
+      "label": "入口总压",
+      "unit": "Pa",
+      "min": 100100,
+      "max": 100500,
+      "default": 100200,
+      "token": "INLET_TOTAL_PRESSURE_PA"
+    },
+    {
+      "key": "inletTotalTemperature",
+      "label": "入口总温",
+      "unit": "K",
+      "min": 290,
+      "max": 310,
+      "default": 300,
+      "token": "INLET_TOTAL_TEMPERATURE_K"
+    },
+    {
+      "key": "outletStaticPressure",
+      "label": "出口静压",
+      "unit": "Pa",
+      "min": 100000,
+      "max": 100000,
+      "default": 100000,
+      "token": "OUTLET_STATIC_PRESSURE_PA"
+    },
+    {
+      "key": "iterations",
+      "label": "迭代上限",
+      "unit": "",
+      "min": 100,
+      "max": 5000,
+      "default": 3000,
+      "integer": true,
+      "token": "ITERATIONS"
+    }
+  ],
+  "constraints": [
+    {
+      "left": "inletTotalPressure",
+      "op": ">",
+      "right": "outletStaticPressure"
+    }
+  ],
+  "pipeline": [
+    [
+      "blockMesh"
+    ],
+    [
+      "snappyHexMesh",
+      "-overwrite"
+    ],
+    [
+      "checkMesh",
+      "-allTopology",
+      "-meshQuality"
+    ],
+    [
+      "rhoSimpleFoam"
+    ],
+    [
+      "foamToVTK",
+      "-latestTime"
+    ]
+  ],
+  "parameter_bounds": {
+    "height": [
+      30,
+      160
+    ]
+  },
+  "recommended_parameters": {
+    "model": "pritchard-1985",
+    "radius": 139.7,
+    "bladeCount": 51,
+    "axialChord": 27.9908,
+    "tangentialChord": 15.0114,
+    "leadingRadius": 0.7874,
+    "trailingRadius": 0.4064,
+    "inletAngle": 35,
+    "outletAngle": -57,
+    "inletHalfWedge": 9,
+    "unguidedTurning": 6.5,
+    "height": 60,
+    "throat": 8.560982297224456
+  },
+  "geometry_model": "pritchard-1985",
+  "simulation_dimensions": 3,
+  "physical_span_m": 0.01
+}

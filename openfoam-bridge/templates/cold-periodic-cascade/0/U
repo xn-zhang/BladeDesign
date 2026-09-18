@@ -1,0 +1,4 @@
+FoamFile {version 2.0; format ascii; class volVectorField; object U;}
+dimensions [0 1 -1 0 0 0 0];
+internalField uniform (18 0 0);
+boundaryField { periodicLow {type cyclic;} periodicHigh {type cyclic;} spanLow {type symmetryPlane;} spanHigh {type symmetryPlane;} inlet {type pressureInletOutletVelocity; value uniform (18 0 0);} outlet {type inletOutlet; inletValue uniform (18 0 0); value uniform (18 0 0);} blade {type noSlip;} }

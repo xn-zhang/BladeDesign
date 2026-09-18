@@ -1,0 +1,117 @@
+{
+  "id": "cold-periodic-cascade",
+  "name": "冷态周期叶栅 · 粗网格流程验证",
+  "description": "OpenCFD v2512 / SST / 60 mm 节距 / 10 mm 展向切片。等截面直叶片；无棱柱层，非工程损失或效率验证。",
+  "solver": "rhoSimpleFoam",
+  "geometry_file": "constant/triSurface/blade.stl",
+  "geometry_bounds_m": [
+    [
+      -0.035,
+      -0.015,
+      -0.08
+    ],
+    [
+      0.035,
+      0.015,
+      0.08
+    ]
+  ],
+  "inputs": [
+    {
+      "key": "inletTotalPressure",
+      "label": "入口总压",
+      "unit": "Pa",
+      "min": 100100,
+      "max": 100500,
+      "default": 100200,
+      "token": "INLET_TOTAL_PRESSURE_PA"
+    },
+    {
+      "key": "inletTotalTemperature",
+      "label": "入口总温",
+      "unit": "K",
+      "min": 290,
+      "max": 310,
+      "default": 300,
+      "token": "INLET_TOTAL_TEMPERATURE_K"
+    },
+    {
+      "key": "outletStaticPressure",
+      "label": "出口静压",
+      "unit": "Pa",
+      "min": 100000,
+      "max": 100000,
+      "default": 100000,
+      "token": "OUTLET_STATIC_PRESSURE_PA"
+    },
+    {
+      "key": "iterations",
+      "label": "迭代上限",
+      "unit": "",
+      "min": 100,
+      "max": 5000,
+      "default": 3000,
+      "integer": true,
+      "token": "ITERATIONS"
+    }
+  ],
+  "constraints": [
+    {
+      "left": "inletTotalPressure",
+      "op": ">",
+      "right": "outletStaticPressure"
+    }
+  ],
+  "pipeline": [
+    [
+      "blockMesh"
+    ],
+    [
+      "snappyHexMesh",
+      "-overwrite"
+    ],
+    [
+      "checkMesh",
+      "-allTopology",
+      "-meshQuality"
+    ],
+    [
+      "rhoSimpleFoam"
+    ],
+    [
+      "foamToVTK",
+      "-latestTime"
+    ]
+  ],
+  "parameter_bounds": {
+    "taper": [
+      1,
+      1
+    ],
+    "twist": [
+      0,
+      0
+    ],
+    "sweep": [
+      0,
+      0
+    ],
+    "lean": [
+      0,
+      0
+    ]
+  },
+  "recommended_parameters": {
+    "chord": 40,
+    "thickness": 12,
+    "position": 35,
+    "inlet": 10,
+    "outlet": -5,
+    "stagger": 0,
+    "height": 60,
+    "taper": 1,
+    "twist": 0,
+    "sweep": 0,
+    "lean": 0
+  }
+}

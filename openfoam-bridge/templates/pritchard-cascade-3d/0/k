@@ -1,0 +1,4 @@
+FoamFile {version 2.0; format ascii; class volScalarField; object k;}
+dimensions [0 2 -2 0 0 0 0];
+internalField uniform 0.5;
+boundaryField { periodicLow {type cyclic;} periodicHigh {type cyclic;} spanLow {type kqRWallFunction; value uniform 0.5;} spanHigh {type kqRWallFunction; value uniform 0.5;} inlet {type fixedValue; value uniform 0.5;} outlet {type inletOutlet; inletValue uniform 0.5; value uniform 0.5;} blade {type kqRWallFunction; value uniform 0.5;} }

@@ -1,0 +1,52 @@
+{
+  "job_ids": [
+    "a780bdaaedf04076b218dad11bf0ad74",
+    "4594c14d7b5547d4956202860f53cf5d"
+  ],
+  "max_parallel": 2,
+  "solver_stages": [
+    {
+      "command": "rhoSimpleFoam",
+      "pid": 421810,
+      "started_at": 1789195359.279827,
+      "ended_at": 1789195368.3931298,
+      "returncode": 0
+    },
+    {
+      "command": "rhoSimpleFoam",
+      "pid": 421809,
+      "started_at": 1789195359.264139,
+      "ended_at": 1789195368.36904,
+      "returncode": 0
+    }
+  ],
+  "solver_overlap_seconds": 9.089212894439697,
+  "cases": [
+    {
+      "id": "a780bdaaedf04076b218dad11bf0ad74",
+      "name": "并行实测 A / p0=100200",
+      "conditions": {
+        "inletTotalPressure": 100200,
+        "inletTotalTemperature": 300,
+        "outletStaticPressure": 100000,
+        "iterations": 300
+      },
+      "status": "completed",
+      "convergence": "not_confirmed",
+      "sha256": "fe0e436fbcbf57d34f77037ebadbcb324b220fc0811d5c55a4bc40781548a4e4"
+    },
+    {
+      "id": "4594c14d7b5547d4956202860f53cf5d",
+      "name": "并行实测 B / p0=100300",
+      "conditions": {
+        "inletTotalPressure": 100300,
+        "inletTotalTemperature": 300,
+        "outletStaticPressure": 100000,
+        "iterations": 300
+      },
+      "status": "completed",
+      "convergence": "not_confirmed",
+      "sha256": "ce53d07b7e88113e4569402349b0665d0fee5728ab68b52947a71bfbe527d701"
+    }
+  ]
+}

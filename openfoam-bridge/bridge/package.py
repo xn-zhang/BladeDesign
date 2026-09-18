@@ -1,0 +1,23 @@
+"""Build a portable workbench from explicitly selected source directories."""
+from pathlib import Path
+import zipfile
+ROOT = Path(__file__).resolve().parents[1]
+
+def package():
+    target = ROOT / 'dist/openfoam-bridge.zip'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp')
+    allowed = {'.py', '.mjs', '.js', '.css', '.html', '.md', '.sh', '.json'}
+    files = [p for folder in ('bridge', 'web', 'docs')
+             for p in (ROOT / folder).rglob('*')
+             if p.is_file() and not p.is_symlink()
+             and '__pycache__' not in p.parts and p.suffix in allowed]
+    files.append(ROOT / 'README.md')
+    with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(files):
+            archive.write(path, path.relative_to(ROOT))
+    temporary.replace(target)
+    return target
+
+if __name__ == '__main__':
+    print(package())

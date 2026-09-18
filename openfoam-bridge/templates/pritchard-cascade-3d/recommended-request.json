@@ -1,0 +1,25 @@
+{
+  "schema": "aeroblade-cfd-v1",
+  "template_id": "pritchard-cascade-3d",
+  "parameters": {
+    "model": "pritchard-1985",
+    "radius": 139.7,
+    "bladeCount": 51,
+    "axialChord": 27.9908,
+    "tangentialChord": 15.0114,
+    "leadingRadius": 0.7874,
+    "trailingRadius": 0.4064,
+    "inletAngle": 35,
+    "outletAngle": -57,
+    "inletHalfWedge": 9,
+    "unguidedTurning": 6.5,
+    "height": 60,
+    "throat": 8.560982297224456
+  },
+  "conditions": {
+    "inletTotalPressure": 100200,
+    "inletTotalTemperature": 300,
+    "outletStaticPressure": 100000,
+    "iterations": 3000
+  }
+}

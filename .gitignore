@@ -1,0 +1,17 @@
+# Local computations and generated distributions
+openfoam-bridge/jobs/
+openfoam-bridge/runtime/
+openfoam-bridge/dist/
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.env
+.env.*
+!.env.example
+api-token
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+.codegraph/

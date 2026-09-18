@@ -1,0 +1,24 @@
+FoamFile {version 2.0; format ascii; class dictionary; object snappyHexMeshDict;}
+
+castellatedMesh true; snap true; addLayers false;
+geometry {blade.stl {type triSurfaceMesh; name blade;}}
+castellatedMeshControls {
+ maxLocalCells 500000; maxGlobalCells 500000; minRefinementCells 0; maxLoadUnbalance 0.1;
+ nCellsBetweenLevels 3; resolveFeatureAngle 30; features ();
+ refinementSurfaces {blade {level (3 3); patchInfo {type wall;}}}
+ refinementRegions {} locationInMesh ({{PC_SEED_X}} {{PC_SEED_Y}} 0); allowFreeStandingZoneFaces true;
+}
+snapControls {nSmoothPatch 5; tolerance 1; nSolveIter 40; nRelaxIter 5; nFeatureSnapIter 10;
+ implicitFeatureSnap true; explicitFeatureSnap false; multiRegionFeatureSnap false;}
+addLayersControls {
+ relativeSizes true; layers {}; expansionRatio 1.2; finalLayerThickness 0.3; minThickness 0.1;
+ nGrow 0; featureAngle 60; nRelaxIter 5; nSmoothSurfaceNormals 1; nSmoothNormals 3;
+ nSmoothThickness 10; maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3;
+ minMedialAxisAngle 90; nBufferCellsNoExtrude 0; nLayerIter 50;
+}
+meshQualityControls {
+ maxNonOrtho 65; maxBoundarySkewness 20; maxInternalSkewness 4; maxConcave 80;
+ minVol 1e-16; minTetQuality 1e-30; minArea -1; minTwist 0.02; minDeterminant 0.001;
+ minFaceWeight 0.05; minVolRatio 0.01; minTriangleTwist -1; nSmoothScale 4; errorReduction 0.75;
+}
+mergeTolerance 1e-6;

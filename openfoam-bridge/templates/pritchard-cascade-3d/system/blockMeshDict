@@ -1,0 +1,15 @@
+FoamFile {version 2.0; format ascii; class dictionary; object blockMeshDict;}
+
+scale 1;
+vertices (
+({{PC_XLO}} {{PC_YLL}} -0.005) ({{PC_XHI}} {{PC_YHL}} -0.005)
+({{PC_XHI}} {{PC_YHH}} -0.005) ({{PC_XLO}} {{PC_YLH}} -0.005)
+({{PC_XLO}} {{PC_YLL}} 0.005) ({{PC_XHI}} {{PC_YHL}} 0.005)
+({{PC_XHI}} {{PC_YHH}} 0.005) ({{PC_XLO}} {{PC_YLH}} 0.005));
+blocks (hex (0 1 2 3 4 5 6 7) (96 18 12) simpleGrading (1 1 1)); edges ();
+boundary (
+ inlet {type patch; faces ((0 4 7 3));} outlet {type patch; faces ((1 2 6 5));}
+ periodicLow {type cyclic; neighbourPatch periodicHigh; transform translational; separationVector (0 {{PC_PITCH}} 0); faces ((0 1 5 4));}
+ periodicHigh {type cyclic; neighbourPatch periodicLow; transform translational; separationVector (0 {{PC_NEG_PITCH}} 0); faces ((3 7 6 2));}
+ spanLow {type wall; faces ((0 3 2 1));} spanHigh {type wall; faces ((4 5 6 7));}
+); mergePatchPairs ();

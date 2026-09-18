@@ -1,0 +1,14 @@
+FoamFile {version 2.0; format ascii; class dictionary; object controlDict;}
+
+application rhoSimpleFoam;
+startFrom startTime; startTime 0; stopAt endTime; endTime {{ITERATIONS}};
+deltaT 1; writeControl timeStep; writeInterval 100; purgeWrite 2;
+writeFormat ascii; writePrecision 10; writeCompression off;
+timeFormat general; timePrecision 8; runTimeModifiable false;
+functions {
+ inletMassFlow {type surfaceFieldValue; libs ("libfieldFunctionObjects.so"); regionType patch;
+ name inlet; operation sum; fields (phi); writeFields false; writeControl timeStep; writeInterval 1; log true;}
+ outletMassFlow {type surfaceFieldValue; libs ("libfieldFunctionObjects.so"); regionType patch;
+ name outlet; operation sum; fields (phi); writeFields false; writeControl timeStep; writeInterval 1; log true;}
+ yPlus {type yPlus; libs ("libfieldFunctionObjects.so"); writeControl writeTime;}
+}

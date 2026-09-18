@@ -1,0 +1,4 @@
+FoamFile {version 2.0; format ascii; class volScalarField; object omega;}
+dimensions [0 0 -1 0 0 0 0];
+internalField uniform 500;
+boundaryField { periodicLow {type cyclic;} periodicHigh {type cyclic;} spanLow {type symmetryPlane;} spanHigh {type symmetryPlane;} inlet {type fixedValue; value uniform 500;} outlet {type inletOutlet; inletValue uniform 500; value uniform 500;} blade {type omegaWallFunction; value uniform 500;} }

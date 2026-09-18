@@ -1,0 +1,6 @@
+FoamFile {version 2.0; format ascii; class dictionary; object createPatchDict;}
+pointSync true;
+patches (
+{name cyclicLow; patchInfo {type cyclic; neighbourPatch cyclicHigh; transform translational; separationVector (0 0.06 0);} constructFrom patches; patches (periodicLow);}
+{name cyclicHigh; patchInfo {type cyclic; neighbourPatch cyclicLow; transform translational; separationVector (0 -0.06 0);} constructFrom patches; patches (periodicHigh);}
+);

@@ -1,0 +1,4 @@
+FoamFile {version 2.0; format ascii; class volScalarField; object T;}
+dimensions [0 0 0 1 0 0 0];
+internalField uniform {{INLET_TOTAL_TEMPERATURE_K}};
+boundaryField { periodicLow {type cyclic;} periodicHigh {type cyclic;} spanLow {type symmetryPlane;} spanHigh {type symmetryPlane;} inlet {type totalTemperature; T0 uniform {{INLET_TOTAL_TEMPERATURE_K}}; gamma 1.4; psi thermo:psi; value uniform {{INLET_TOTAL_TEMPERATURE_K}};} outlet {type inletOutlet; inletValue uniform {{INLET_TOTAL_TEMPERATURE_K}}; value uniform {{INLET_TOTAL_TEMPERATURE_K}};} blade {type zeroGradient;} }
