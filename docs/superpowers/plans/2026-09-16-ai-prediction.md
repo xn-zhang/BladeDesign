@@ -1,5 +1,7 @@
 # AeroBlade AI Prediction Implementation Plan
 
+> 2026-09-21 更新：标量数据/回归/API/UI与自动优化由 [分阶段实施计划](2026-09-21-evaluation-optimization.md) 接管，实际落地在 `aeroblade/evaluation` 和“评估与优化”工作区。本文的 PyG / FNO、正式 benchmark 和流场预测仍待实施；原任务条目不等价于本次精简后的实现。当前仅3组独立几何，执行实验性 smoke。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Execute locally in sequence; no delegation is required.
 
 **Goal:** 在现有工作台完成参数回归、PyG 图网络和 FNO 全流场三条可训练、可评价、可推理的二维气动预测路线。

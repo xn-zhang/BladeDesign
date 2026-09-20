@@ -1,12 +1,19 @@
 """Run behind an owner-managed HTTPS reverse proxy. Python 3.10+, no pip dependencies."""
 import signal
+from http.cookies import SimpleCookie, CookieError
 import argparse, hmac, http.server, json, mimetypes, os, pathlib, re, shutil, urllib.parse
 from core import Manager, ROOT, QueueFullError
+from design_assistant import ModelService, ModelError
+from session_store import StateStore, AuthError, COOKIE_NAME, SESSION_SECONDS
 
 MAX_BODY=200_000
 
-def make_server(host,port,manager,token,origins):
-    if len(token)<24:raise ValueError('AEROBLADE_API_TOKEN must contain at least 24 characters')
+def make_server(host,port,manager,token,origins,model_service=None,state=None,public_origin='',allow_setup=False,evaluation=None,batches=None):
+    if token and len(token)<24:raise ValueError('AEROBLADE_API_TOKEN must contain at least 24 characters')
+    state=state if state is not None else StateStore()
+    models = model_service if model_service is not None else ModelService(store=state)
+    origins=set(origins)
+    if public_origin:origins.add(public_origin)
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version='AeroBladeBridge/1'
         def setup(self):super().setup();self.connection.settimeout(20)
@@ -15,21 +22,35 @@ def make_server(host,port,manager,token,origins):
             self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff')
             origin=self.headers.get('Origin')
             if origin in origins:self.send_header('Access-Control-Allow-Origin',origin);self.send_header('Vary','Origin')
+            if origin in origins:self.send_header('Access-Control-Allow-Credentials','true')
+        def session_token(self):
+            try:
+                cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
+                return cookie[COOKIE_NAME].value if COOKIE_NAME in cookie else ''
+            except CookieError:return ''
+        def cookie(self,value,clear=False):
+            self.session_cookie=f'{COOKIE_NAME}={value}; Path=/api; HttpOnly; SameSite=Lax; Max-Age={0 if clear else SESSION_SECONDS}'+('; Secure' if public_origin.startswith('https://') else '')
         def send_json(self,data,status=200):
-            body=json.dumps(data,ensure_ascii=False,allow_nan=False).encode();self.send_response(status);self.common();self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            body=json.dumps(data,ensure_ascii=False,allow_nan=False).encode();self.send_response(status);self.common();self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)))
+            if getattr(self,'session_cookie',None):self.send_header('Set-Cookie',self.session_cookie)
+            self.end_headers();self.wfile.write(body)
         def authorized(self):
             origin=self.headers.get('Origin')
             if origin and origin not in origins:self.send_json({'error':'Origin is not allowed'},403);return False
             actual=self.headers.get('Authorization','')
-            if not hmac.compare_digest(actual,'Bearer '+token):self.send_json({'error':'Invalid API token'},401);return False
+            if token and hmac.compare_digest(actual.encode(),('Bearer '+token).encode()):return True
+            session=state.session(self.session_token())
+            if not session:self.send_json({'error':'请登录平台后继续','code':'login_required'},401);return False
+            if self.command!='GET' and not hmac.compare_digest(self.headers.get('X-CSRF-Token','').encode(),session['csrf'].encode()):
+                self.send_json({'error':'会话校验失败，请刷新页面后重试','code':'csrf_failed'},403);return False
             return True
         def do_OPTIONS(self):
             if self.headers.get('Origin') not in origins:self.send_json({'error':'Origin is not allowed'},403);return
-            self.send_response(204);self.common();self.send_header('Access-Control-Allow-Methods','GET, POST, OPTIONS');self.send_header('Access-Control-Allow-Headers','Authorization, Content-Type');self.send_header('Content-Length','0');self.end_headers()
-        def body(self):
+            self.send_response(204);self.common();self.send_header('Access-Control-Allow-Methods','GET, POST, OPTIONS');self.send_header('Access-Control-Allow-Headers','Authorization, Content-Type, X-CSRF-Token');self.send_header('Content-Length','0');self.end_headers()
+        def body(self,limit=MAX_BODY):
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('Content-Type must be application/json')
             raw=self.headers.get('Content-Length','')
-            if not raw.isdigit() or not 0<int(raw)<=MAX_BODY:raise ValueError('Invalid request body length')
+            if not raw.isdigit() or not 0<int(raw)<=limit:raise ValueError('Invalid request body length')
             return json.loads(self.rfile.read(int(raw)),parse_constant=lambda x:(_ for _ in ()).throw(ValueError('Nonfinite JSON value')))
         def send_file(self,path,name=None):
             if not path.is_file():raise KeyError('File unavailable')
@@ -43,10 +64,76 @@ def make_server(host,port,manager,token,origins):
                 if self.command!='GET':self.send_json({'error':'Not found'},404);return
                 # Only deployable public assets; never serve bridge source, jobs or templates.
                 allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/aeroblade.zip':'aeroblade.zip'}
+                for name in ('design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css'):
+                    allow['/'+name]=name
+                for name in ('session.js','session.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
                 if path not in allow:raise KeyError('Not found')
                 self.send_file(ROOT/('dist' if path=='/aeroblade.zip' else 'web')/allow[path]);return
+            if path in ('/api/session','/api/session/login','/api/session/setup','/api/session/logout'):
+                origin=self.headers.get('Origin')
+                if (origin and origin not in origins) or (self.command=='POST' and origin not in origins):
+                    self.send_json({'error':'Origin is not allowed'},403);return
+                session=state.session(self.session_token())
+                local_hosts={'127.0.0.1:'+str(self.server.server_port),'localhost:'+str(self.server.server_port)}
+                setup_allowed=allow_setup and not public_origin and self.client_address[0] in ('127.0.0.1','::1') and self.headers.get('Host') in local_hosts
+                if self.command=='GET' and path=='/api/session':
+                    self.send_json({'authenticated':bool(session),'username':session['username'] if session else None,'csrf':session['csrf'] if session else None,'setup_required':not state.initialized(),'setup_allowed':setup_allowed});return
+                if self.command=='POST' and path in ('/api/session/login','/api/session/setup'):
+                    data=self.body()
+                    if not isinstance(data,dict) or set(data)!={'username','password'}:raise ValueError('请填写用户名和密码')
+                    if path.endswith('/setup'):
+                        if not setup_allowed or origin not in {'http://'+name for name in local_hosts}:raise AuthError('请在服务器启动环境中初始化管理员账号',403)
+                        state.create_admin(data['username'],data['password'])
+                    key,session=state.login(data['username'],data['password'],self.client_address[0])
+                    self.cookie(key);self.send_json({'authenticated':True,**session});return
+                if self.command=='POST' and path.endswith('/logout'):
+                    if not self.authorized():return
+                    state.logout(self.session_token());self.cookie('',clear=True);self.send_json({'authenticated':False});return
+                raise KeyError('Not found')
             if not self.authorized():return
-            if self.command=='GET' and path=='/api/health':self.send_json(manager.health());return
+            if path.startswith('/api/batches'):
+                if batches is None:raise ValueError('批次服务未启动，请使用新版完整bridge')
+                if self.command=='GET' and path=='/api/batches/designs':self.send_json({'designs':batches.designs()});return
+                design_match=re.fullmatch(r'/api/batches/designs/([a-f0-9]{24})',path)
+                if self.command=='GET' and design_match:self.send_json(batches.design(design_match[1]));return
+                if path=='/api/batches':
+                    if self.command=='GET':self.send_json({'batches':batches.list(),'cfd_ready':bool(manager and manager.health().get('ready'))});return
+                    if self.command=='POST':
+                        data=self.body()
+                        if not isinstance(data,dict) or set(data)!={'design_batch_id'}:raise ValueError('只接受已校验参数包编号')
+                        self.send_json(batches.create(data['design_batch_id']),201);return
+                match=re.fullmatch(r'/api/batches/([a-f0-9]{32})(?:/(start|pause|resume|cancel|retry))?',path)
+                if match:
+                    bid,action=match.groups()
+                    if self.command=='GET' and action is None:self.send_json(batches.get(bid));return
+                    if self.command=='POST' and action:self.send_json(batches.control(bid,action,self.body()));return
+                raise KeyError('Not found')
+            if path.startswith('/api/evaluation/'):
+                if evaluation is None:self.send_json({'error':'当前部署未启动评估计算服务，请使用新版Python bridge'},503);return
+                endpoint=path.removeprefix('/api/evaluation/')
+                if self.command=='GET' and endpoint=='capabilities':self.send_json(evaluation.capabilities());return
+                if self.command=='GET' and endpoint in ('datasets','models','tasks'):self.send_json({endpoint:evaluation.catalog(endpoint)});return
+                if self.command=='POST' and endpoint in ('dataset','train','predict','analyze','evaluate','optimize','batch_generate','batch_import'):self.send_json(evaluation.submit(endpoint,self.body(2_500_000 if endpoint=='batch_import' else MAX_BODY)),202);return
+                match=re.fullmatch(r'tasks/([a-f0-9]{32})(?:/(cancel|pause|resume))?',endpoint)
+                if match:
+                    tid,action=match.groups()
+                    if self.command=='GET' and action is None:self.send_json(evaluation.get(tid));return
+                    if self.command=='POST' and action:
+                        if self.body()!={}:raise ValueError('控制操作不接受附加字段')
+                        self.send_json(evaluation.control(tid,action));return
+                raise KeyError('Not found')
+            if path=='/api/design-assistant/config':
+                if self.command=='GET':self.send_json(models.describe());return
+                if self.command=='POST':self.send_json(models.configure(self.body()));return
+            if self.command=='POST' and path=='/api/design-assistant/test':self.send_json(models.test(self.body()));return
+            if self.command=='POST' and path=='/api/design-assistant/clear':
+                data=self.body()
+                if not isinstance(data,dict) or set(data)!={'provider'}:raise ValueError('只允许指定 provider')
+                self.send_json(models.clear(data['provider']));return
+            if self.command=='POST' and path=='/api/design-assistant/chat':self.send_json(models.chat(self.body(2_500_000)));return
+            if self.command=='POST' and path=='/api/design-assistant/batch-plan':self.send_json(models.batch_plan(self.body()));return
+            if self.command=='GET' and path=='/api/health':self.send_json(manager.health() if manager is not None else {'api':'aeroblade-model-v1','ready':True,'model_only':True});return
+            if manager is None:self.send_json({'error':'此后端仅提供模型服务，请连接独立 CFD 计算服务'},503);return
             if path=='/api/scheduler':
                 if self.command=='GET':self.send_json(manager.scheduler());return
                 if self.command=='POST':
@@ -74,31 +161,60 @@ def make_server(host,port,manager,token,origins):
             try:self.dispatch()
             except KeyError:self.send_json({'error':'Not found'},404)
             except QueueFullError as e:self.send_json({'error':str(e)},429)
+            except ModelError as e:self.send_json({'error':str(e)},e.status)
+            except AuthError as e:self.send_json({'error':str(e)},e.status)
             except (ValueError,TypeError) as e:self.send_json({'error':str(e)[:1000]},400)
             except (BrokenPipeError,ConnectionResetError,TimeoutError):pass
             except Exception:self.send_json({'error':'Internal bridge error; inspect server configuration'},500)
         do_GET=handle_request
         do_POST=handle_request
-    return http.server.ThreadingHTTPServer((host,port),Handler)
+    httpd=http.server.ThreadingHTTPServer((host,port),Handler)
+    if host in ('127.0.0.1','localhost','::1'):
+        origins.update({'http://127.0.0.1:'+str(httpd.server_port),'http://localhost:'+str(httpd.server_port)})
+    httpd.state_store=state
+    return httpd
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--host',default='127.0.0.1');parser.add_argument('--port',type=int,default=8787);parser.add_argument('--templates',type=pathlib.Path,default=ROOT/'templates');parser.add_argument('--jobs',type=pathlib.Path,default=ROOT/'jobs');parser.add_argument('--timeout',type=int,default=7200);parser.add_argument('--max-parallel',type=int,default=2);parser.add_argument('--max-pending',type=int,default=16);parser.add_argument('--case-threads',type=int,default=1);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--host',default='127.0.0.1');parser.add_argument('--port',type=int,default=8787);parser.add_argument('--templates',type=pathlib.Path,default=ROOT/'templates');parser.add_argument('--jobs',type=pathlib.Path,default=ROOT/'jobs');parser.add_argument('--timeout',type=int,default=7200);parser.add_argument('--max-parallel',type=int,default=2);parser.add_argument('--max-pending',type=int,default=16);parser.add_argument('--case-threads',type=int,default=1)
+    parser.add_argument('--data-dir',type=pathlib.Path,default=pathlib.Path(os.environ.get('AEROBLADE_DATA_DIR',str(ROOT/'private'))))
+    parser.add_argument('--model-only',action='store_true',help='Run login and model services without a CFD manager')
+    parser.add_argument('--evaluation-dir',type=pathlib.Path,default=pathlib.Path(os.environ.get('AEROBLADE_EVALUATION_DIR',str(ROOT/'ai-data'))))
+    args=parser.parse_args()
     if args.timeout<60 or args.timeout>172800:parser.error('--timeout must be 60–172800 seconds')
     token=os.environ.get('AEROBLADE_API_TOKEN','')
-    if len(token)<24:parser.error('Set AEROBLADE_API_TOKEN to a random token of at least 24 characters')
+    if token and len(token)<24:parser.error('AEROBLADE_API_TOKEN must contain at least 24 characters when configured')
+    public_origin=os.environ.get('AEROBLADE_PUBLIC_ORIGIN','').rstrip('/')
+    if public_origin:
+        parsed=urllib.parse.urlsplit(public_origin)
+        if parsed.scheme!='https' or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username is not None or parsed.password is not None:parser.error('AEROBLADE_PUBLIC_ORIGIN must be an HTTPS origin without path or credentials')
+    if args.host not in ('127.0.0.1','localhost','::1') and not public_origin:parser.error('Set AEROBLADE_PUBLIC_ORIGIN to the HTTPS website origin for remote deployment')
+    state=StateStore(args.data_dir/'state.sqlite3')
+    if not state.initialized() and os.environ.get('AEROBLADE_ADMIN_PASSWORD'):
+        try:state.create_admin(os.environ.get('AEROBLADE_ADMIN_USERNAME','admin'),os.environ['AEROBLADE_ADMIN_PASSWORD'])
+        except AuthError as e:parser.error(str(e))
+    if (public_origin or args.host not in ('127.0.0.1','localhost','::1')) and not state.initialized():parser.error('Initialize AEROBLADE_ADMIN_USERNAME and AEROBLADE_ADMIN_PASSWORD before remote deployment')
     origins={s.strip().rstrip('/') for s in os.environ.get('AEROBLADE_ALLOWED_ORIGINS','').split(',') if s.strip()}
     origins.update({'http://127.0.0.1:'+str(args.port),'http://localhost:'+str(args.port)})
     from package import package
     if not (ROOT/'dist/aeroblade.zip').is_file():package()
-    try:manager=Manager(args.jobs,args.templates,args.timeout,max_parallel=args.max_parallel,max_pending=args.max_pending,case_threads=args.case_threads)
+    try:manager=None if args.model_only else Manager(args.jobs,args.templates,args.timeout,max_parallel=args.max_parallel,max_pending=args.max_pending,case_threads=args.case_threads)
     except ValueError as e:parser.error(str(e))
-    http=make_server(args.host,args.port,manager,token,origins)
+    from evaluation_service import EvaluationService
+    evaluation=EvaluationService(args.evaluation_dir,args.jobs,manager)
+    from batch_service import BatchService
+    batches=BatchService(args.evaluation_dir,manager);evaluation.batch_service=batches
+    http=make_server(args.host,args.port,manager,token,origins,state=state,public_origin=public_origin,allow_setup=not public_origin and args.host in ('127.0.0.1','localhost','::1'),evaluation=evaluation,batches=batches)
     print('AeroBlade bridge listening on '+args.host+':'+str(args.port),flush=True)
-    print(json.dumps(manager.health(),ensure_ascii=False),flush=True)
+    print('Authentication: browser session; model configuration: private persistent database',flush=True)
+    if manager is not None:print(json.dumps(manager.health(),ensure_ascii=False),flush=True)
     def stop(signum,frame):raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,stop)
     try:http.serve_forever()
     except KeyboardInterrupt:pass
     finally:
-        http.server_close();manager.shutdown()
+        http.server_close()
+        batches.shutdown()
+        evaluation.shutdown()
+        if manager is not None:manager.shutdown()
+        state.close()
 if __name__=='__main__':main()

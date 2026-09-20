@@ -1,7 +1,9 @@
 import {isPritchard,analyze,validate} from './geometry.js';
 import {initFlowView} from './flow-view.js';
-import {initAIWorkspace} from './ai.js';
+import {initEvaluationWorkspace} from './evaluation.js';
+import {initBatchWorkflow} from './batch.js';
 import {initDesignAssistant} from './design-assistant.js';
+import {sessionFetch} from './session.js';
 const $ = s => document.querySelector(s);
 const escapeHTML = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const labels = {queued:'排队中',preparing:'准备算例',running:'运行中',packaging:'整理结果',completed:'计算结束',failed:'失败',cancelled:'已取消',cancelling:'正在取消',interrupted:'已中断'};
@@ -11,7 +13,7 @@ export function initCFD(getDesign,applyDesign) {
   const host = document.createElement('section');host.id='cfd-panel';host.hidden=true;
   host.innerHTML=`<div class="cfd-heading"><div><span class="eyebrow">OPENFOAM COMPUTE</span><h2>CFD 仿真工作台</h2></div><div class="cfd-heading-actions"><span class="cfd-status" id="cfd-status">未连接求解服务</span><button id="cfd-hide">收起</button></div></div>
   <div class="cfd-layout"><div class="cfd-config">
-  <h3>01 · 连接计算服务</h3><label for="cfd-url">服务地址</label><input id="cfd-url" type="url" placeholder="https://foam.your-lab.org" autocomplete="off"><label for="cfd-token">访问令牌 <small>仅保留在当前页面内存</small></label><input id="cfd-token" type="password" placeholder="在你的求解服务上设置的 API 令牌" autocomplete="off"><div class="cfd-buttons"><button id="cfd-connect" class="primary">连接并检测</button><button id="cfd-disconnect" disabled>断开</button></div>
+  <h3>01 · 连接计算服务</h3><label for="cfd-url">服务地址</label><input id="cfd-url" type="url" placeholder="https://foam.your-lab.org" autocomplete="off"><label for="cfd-token">独立计算服务令牌 <small>同源连接可留空，使用登录会话</small></label><input id="cfd-token" type="password" placeholder="独立 CFD 服务的令牌；当前平台可留空" autocomplete="off"><div class="cfd-buttons"><button id="cfd-connect" class="primary">连接并检测</button><button id="cfd-disconnect" disabled>断开</button></div>
   <p id="cfd-connection-message" class="cfd-help">网页不直接运行 OpenFOAM。连接已有服务，或下载桥接程序，在你的 Linux 求解机启动。</p><section class="cfd-scheduler" aria-label="并行计算设置"><h3>计算槽位</h3><div class="cfd-scheduler-controls"><label for="cfd-parallel">同时运行</label><select id="cfd-parallel" disabled><option value="2">2 个算例</option></select><button id="cfd-parallel-apply" disabled>应用</button></div><p id="cfd-scheduler-status" role="status">连接后显示运行与排队数量。</p><small>按算例并行；单算例不启用 MPI。</small></section><a class="cfd-download" href="aeroblade.zip" download>下载 AeroBlade 工作台与部署说明 ↗</a>
   <h3>02 · 算例与工况</h3><label for="cfd-case-name">算例名称（可选）</label><input id="cfd-case-name" maxlength="80" placeholder="例如：基准工况 / 高入口总压"><label for="cfd-template">服务器算例模板</label><select id="cfd-template" disabled><option>连接后读取可用模板</option></select><p id="cfd-template-info" class="cfd-help">周期边界、湍流模型、网格尺度和热力学设置由模板确定。</p><button id="cfd-apply-design" disabled>应用模板推荐叶片</button><div id="cfd-inputs"></div><div id="cfd-snapshot" class="cfd-snapshot"></div>
   <div class="cfd-buttons"><button id="cfd-submit" class="primary" disabled>提交真实仿真</button><button id="cfd-request">导出任务请求</button></div><p class="cfd-help">提交时冻结当前叶片和工况；后续编辑不会修改正在计算的任务。</p></div>
@@ -25,18 +27,22 @@ export function initCFD(getDesign,applyDesign) {
   const flowView=initFlowView($('#cfd-flow'),id=>api('/jobs/'+id+'/flow'));
   const trigger=document.createElement('button');trigger.id='open-cfd';trigger.textContent='CFD 仿真';
   const designTab=document.createElement('button');designTab.id='open-design';designTab.textContent='叶片设计';
-  const aiPanel=initAIWorkspace(),aiTab=document.createElement('button');aiTab.id='open-ai';aiTab.textContent='AI 预测';
-  const tabs=document.createElement('nav');tabs.className='workspace-tabs';tabs.setAttribute('aria-label','工作区切换');tabs.setAttribute('role','tablist');tabs.append(designTab,trigger,aiTab);$('.header-actions').before(tabs);
+  const {evaluationPanel,aiPanel,showTraining,buildBatchDataset}=initEvaluationWorkspace({getDesign,applyDesign,openDesign:()=>workspace('design'),openAI:()=>workspace('ai'),openEvaluation:()=>workspace('evaluation'),openAssistant:()=>workspace('initial'),openModelSettings:()=>{workspace('initial');$('#initial-model-settings').click();}});
+  const aiTab=document.createElement('button');aiTab.id='open-ai';aiTab.textContent='AI 预测';
+  const evaluationTab=document.createElement('button');evaluationTab.id='open-evaluation';evaluationTab.textContent='评估与优化';
+  const tabs=document.createElement('nav');tabs.className='workspace-tabs';tabs.setAttribute('aria-label','工作区切换');tabs.setAttribute('role','tablist');tabs.append(designTab,trigger,aiTab,evaluationTab);$('.header-actions').before(tabs);
   const design=$('main'),title=$('.workspace-title');design.id='design-workspace';design.setAttribute('role','tabpanel');design.setAttribute('aria-labelledby','open-design');host.setAttribute('role','tabpanel');host.setAttribute('aria-labelledby','open-cfd');
   const initialPanel=initDesignAssistant({applyDesign,openDesign:()=>{workspace('design');designTab.focus();}}),initialTab=document.createElement('button');initialTab.id='open-initial';initialTab.textContent='初始设计';tabs.prepend(initialTab);
-  const workspaces=[['initial',initialTab,initialPanel],['design',designTab,design],['cfd',trigger,host],['ai',aiTab,aiPanel]];
+  const workspaces=[['initial',initialTab,initialPanel],['design',designTab,design],['cfd',trigger,host],['ai',aiTab,aiPanel],['evaluation',evaluationTab,evaluationPanel]];
   for(const [,tab,panel] of workspaces){tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',tab.id);}
   function workspace(mode){document.body.dataset.workspace=mode;title.hidden=mode!=='design';for(const [id,tab,panel] of workspaces){const active=id===mode;panel.hidden=!active;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;}window.scrollTo(0,0);if(mode==='cfd')snapshot();}
   trigger.onclick=()=>workspace('cfd');designTab.onclick=()=>workspace('design');$('#cfd-hide').textContent='返回设计';$('#cfd-hide').onclick=()=>{workspace('design');designTab.focus();};
   aiTab.onclick=()=>workspace('ai');
+  evaluationTab.onclick=()=>workspace('evaluation');
   initialTab.onclick=()=>workspace('initial');
   tabs.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const current=workspaces.findIndex(([id])=>id===document.body.dataset.workspace);const index=e.key==='Home'?0:e.key==='End'?workspaces.length-1:(current+(e.key==='ArrowRight'?1:-1)+workspaces.length)%workspaces.length;workspace(workspaces[index][0]);workspaces[index][1].focus();}});
   workspace('initial');
+  initBatchWorkflow({getDesign,applyDesign,initialPanel,cfdPanel:host,aiPanel,openCFD:()=>workspace('cfd'),openAI:()=>workspace('ai'),showTraining,buildBatchDataset});
   if(['localhost','127.0.0.1'].includes(location.hostname))$('#cfd-url').value=location.origin;
   function message(text,error=false){$('#cfd-message').textContent=text;$('#cfd-message').className=error?'error':'';}
   function snapshot(){const p=getDesign();$('#cfd-snapshot').textContent=isPritchard(p)?`Pritchard 1985 · 轴向弦长 ${p.axialChord.toFixed(3)} mm · 节距 ${analyze(p).pitch.toFixed(3)} mm · 拉伸展宽 ${p.height} mm`:`旧模型 · 弦长 ${p.chord} mm · 叶高 ${p.height} mm · 扭转 ${p.twist}°`;
@@ -54,7 +60,7 @@ export function initCFD(getDesign,applyDesign) {
   async function api(path,opts={},session=connection){
     if(!session)throw Error('请先连接求解服务');
     const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),path.endsWith('/artifacts')?120000:15000);
-    try {const res=await fetch(session.url+'/api'+path,{...opts,headers:{Authorization:'Bearer '+session.token,...(opts.body?{'Content-Type':'application/json'}:{}),...opts.headers},signal:ctrl.signal,redirect:'error'});
+    try {const res=await (session.cookie?sessionFetch:fetch)(session.url+'/api'+path,{...opts,headers:{...(!session.cookie?{Authorization:'Bearer '+session.token}:{}),...(opts.body?{'Content-Type':'application/json'}:{}),...opts.headers},signal:ctrl.signal,redirect:'error'});
       if(!res.ok){let detail;try{detail=(await res.json()).error}catch{detail='HTTP '+res.status}throw Error(detail||'服务请求失败');}
       return path.endsWith('/artifacts')?await res.blob():await res.json();
     }catch(e){if(e.name==='AbortError')throw Error('连接超时，请检查服务地址、HTTPS 和网络');if(e instanceof TypeError)throw Error('无法访问服务，请检查 HTTPS、允许的网页来源和网络连接');throw e;}finally{clearTimeout(timeout);}
@@ -81,8 +87,9 @@ export function initCFD(getDesign,applyDesign) {
     resetConnection();const gen=generation;$('#cfd-connect').disabled=true;message('正在检测真实求解环境…');
     try {const url=new URL($('#cfd-url').value.trim());if(url.username||url.password||url.search||url.hash)throw Error('请填写不含凭据、查询参数或片段的服务地址');
       if(url.protocol!=='https:'&&!(location.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)&&url.protocol==='http:'))throw Error('在线平台需要 HTTPS 求解地址；本地 HTTP 工作台仅可连接本机 HTTP 服务');
-      const token=$('#cfd-token').value.trim();if(token.length<24)throw Error('请输入至少 24 个字符的服务令牌');
-      const session={url:url.href.replace(/\/$/,''),token};const data=await api('/health',{},session);if(gen!==generation)return;
+      const token=$('#cfd-token').value.trim(),cookie=url.origin===location.origin&&!token;if(!cookie&&token.length<24)throw Error('独立 CFD 服务需要至少24个字符的服务令牌；同源服务可留空并使用登录会话');
+      const session={url:url.href.replace(/\/$/,''),token,cookie};const data=await api('/health',{},session);if(gen!==generation)return;
+      if(data.model_only)throw Error('当前后端仅提供模型服务，请填写独立 CFD 服务器地址及其服务令牌');
       if(data.api!=='aeroblade-openfoam-v1'||!Array.isArray(data.templates))throw Error('服务不是兼容的 AeroBlade OpenFOAM 桥接端');
       connection=session;health=data;renderScheduler(data);$('#cfd-token').value='';$('#cfd-status').textContent=data.ready?'求解服务已就绪':'已连接 · 环境待配置';$('#cfd-status').classList.add('connected');$('#cfd-disconnect').disabled=false;$('#cfd-refresh').disabled=false;
       $('#cfd-connection-message').textContent=`OpenFOAM ${data.openfoam_version} · ${data.templates.length} 个模板 · 多算例调度`;
@@ -90,6 +97,7 @@ export function initCFD(getDesign,applyDesign) {
       if(gen!==generation)return;message(data.ready?'已连接真实求解服务。选择模板并核对工况后即可提交。':['服务已连接，但尚不能求解。',...(!data.templates.length?['请在求解机安装已验证的叶栅算例模板。']:[]),...(data.missing_commands?.length?['缺少命令：'+data.missing_commands.join(', ')]:[]),...(data.template_errors||[])].join(' '),!data.ready);
     }catch(e){if(gen===generation){resetConnection();message(e.message,true);}}finally{if(gen===generation)$('#cfd-connect').disabled=false;}
   };
+  document.addEventListener('aeroblade:sessionchange',event=>{if(!event.detail.authenticated&&connection?.cookie){resetConnection();message('已退出平台登录；服务器计算任务不受影响。');}});
   function template(){return health?.templates.find(t=>t.id===$('#cfd-template').value)}
   function renderInputs(){const t=template();$('#cfd-apply-design').disabled=!t?.recommended_parameters||!applyDesign;$('#cfd-inputs').innerHTML='';$('#cfd-submit').disabled=!health?.ready||!t||busy;
     $('#cfd-template-info').textContent=t?`${t.solver} · ${t.description||t.name||t.id}`:'模板尚未配置。请在求解机安装已有的叶栅算例后重新连接。';

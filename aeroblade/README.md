@@ -15,8 +15,10 @@ bash bridge/start-local.sh
 
 默认使用 [Pritchard 1985 十一参数截面模型](docs/PRITCHARD.md)，旧概念模型可显式切换。
 
+“AI 预测”是独立的模型开发与推理工作区，集中提供训练数据、Ridge / ExtraTrees / MLP 参数回归、模型卡与大模型入口；“评估与优化”独立提供 CFD 指标对比，以及有预算的 DOE 与局部细化优化。两页共享设计、工况、代理模型和任务。安装、操作、API 和验证边界见 [评估与优化说明](docs/EVALUATION_OPTIMIZATION.md)。现有 3 组独立几何只用于实验性模型；真实自动优化需完整 OpenFOAM 后端。
+
 三维探索可执行 `python3 bridge/create_pritchard_3d.py`，再在工作台选择对应模板；[首轮结果尚未通过收敛与严格几何验证](docs/THREE_D_VALIDATION.md)。
 
 默认同时运行2个算例，工作台“计算槽位”可调整并发数。启动配置示例：`bash bridge/start-local.sh --max-parallel 2 --max-pending 16 --case-threads 1`。详见 [并行计算说明](docs/PARALLEL_CASES.md)。
 
-前台服务按 `Ctrl+C` 停止，等待退出后执行相同命令重启。关闭网页不会停止计算。批量参数目前通过 API 提交，网页仅支持单份设计 JSON 导入。
+前台服务按 `Ctrl+C` 停止，等待退出后执行相同命令重启。关闭网页不会停止计算。网页支持初始设计生成批量参数包、CFD批次JSON导入和按批次构建AI训练数据，详见 [批量数据生产指南](docs/BATCH_PRODUCTION.md)。

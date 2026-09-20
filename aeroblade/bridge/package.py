@@ -7,8 +7,8 @@ def package():
     target = ROOT / 'dist/aeroblade.zip'
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp')
-    allowed = {'.py', '.mjs', '.js', '.css', '.html', '.md', '.sh', '.json'}
-    files = [p for folder in ('bridge', 'web', 'docs')
+    allowed = {'.py', '.mjs', '.js', '.css', '.html', '.md', '.sh', '.json', '.txt'}
+    files = [p for folder in ('bridge', 'web', 'docs', 'evaluation')
              for p in (ROOT / folder).rglob('*')
              if p.is_file() and not p.is_symlink()
              and '__pycache__' not in p.parts and p.suffix in allowed]

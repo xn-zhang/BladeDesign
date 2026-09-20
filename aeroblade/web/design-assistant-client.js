@@ -1,5 +1,6 @@
 import {reference, specs} from './pritchard.js';
 import {validate, analyze} from './geometry.js';
+import {sessionFetch} from './session.js';
 
 export const PARAMETER_FIELDS = specs.flatMap(group => group[2]);
 export const ASSISTANT_ENDPOINT = '/api/design-assistant/chat';
@@ -48,17 +49,20 @@ export function demoReply(message) {
   }};
 }
 
-export async function requestAssistant({provider, messages, signal, fetchImpl = globalThis.fetch}) {
+export async function requestAssistant({provider, messages, signal, fetchImpl = sessionFetch}) {
   if (!['general','domain'].includes(provider)) throw Error('请选择通用或航发领域模型');
   const response = await fetchImpl(ASSISTANT_ENDPOINT, {
-    method:'POST', signal, credentials:'same-origin', headers:{'Content-Type':'application/json'},
+    method:'POST', signal, redirect:'error', credentials:'same-origin', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({schema:'aeroblade-assistant-request-v1',provider,messages,
       geometryModel:'pritchard-1985',units:{length:'mm',angle:'deg'},parameterContract:PARAMETER_FIELDS.map(([key,label,min,max,,unit])=>({key,label,min,max,unit})),
       angleConvention:'signed-from-axial; negative-outlet; inlet-half-wedge',extrusion:{key:'height',min:30,max:160,unit:'mm',partOfElevenParameters:false}}),
   });
   if (!response.ok) {
-    if ([404,405,501,503].includes(response.status)) throw Error('大模型 API 尚未接入或服务暂不可用；可重试，或切换“参考演示”');
-    if ([401,403].includes(response.status)) throw Error('模型服务鉴权失败，请由服务端配置访问凭据');
+    if ([404,405,501].includes(response.status)) throw Error('大模型 API 尚未接入当前页面；请在“模型配置”连接新版平台后端');
+    if (response.status===401)throw Error('登录已失效，请重新登录平台');
+    if (response.status===403)throw Error('会话或来源校验失败，请刷新页面后重试');
+    let detail;try{detail=(await response.json()).error;}catch{}
+    if(typeof detail==='string'&&detail.length<=1000)throw Error(detail);
     throw Error(`模型服务请求失败（HTTP ${response.status}），请稍后重试`);
   }
   let raw;

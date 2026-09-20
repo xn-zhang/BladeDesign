@@ -1,9 +1,10 @@
 """Audit a completed real bridge job; never treats End alone as convergence."""
 import argparse,json,math,pathlib,re
-from core import parse_residuals
+try:from .core import parse_residuals
+except ImportError:from core import parse_residuals
 NUM=r'[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?'
-def audit(folder):
-    folder=pathlib.Path(folder);j=json.loads((folder/'job.json').read_text());text=(folder/'run.log').read_text(errors='replace')
+def audit(folder,write=True):
+    folder=pathlib.Path(folder);j=json.loads((folder/'job.json').read_text(encoding='utf-8'));text=(folder/'run.log').read_text(encoding='utf-8',errors='replace')
     case=folder/'case';mesh=text.split('--- checkMesh ---')[-1].split('\n--- ')[0]
     solver=text.split('--- '+j['solver']+' ---')[-1].split('\n--- ')[0]
     rows=parse_residuals(solver);last=max((r['iteration'] for r in rows),default=0);res={}
@@ -21,7 +22,7 @@ def audit(folder):
         for name in ['p','T','U','k','omega']:
             path=latest/name
             if not path.exists():continue
-            s=path.read_text();m=re.search(r'internalField\s+nonuniform\s+List<(scalar|vector)>\s+(\d+)\s*\((.*?)\)\s*;',s,re.S)
+            s=path.read_text(encoding='utf-8');m=re.search(r'internalField\s+nonuniform\s+List<(scalar|vector)>\s+(\d+)\s*\((.*?)\)\s*;',s,re.S)
             if m:
                 values=[float(x) for x in re.findall(NUM,m[3])];n=int(m[2])*(3 if m[1]=='vector' else 1)
                 if len(values)!=n:raise ValueError('Invalid field length: '+name)
@@ -34,7 +35,7 @@ def audit(folder):
     required={'Ux','Uy','p','h','k','omega'}|({'Uz'} if dimensions==3 else set())
     boundary=case/'constant/polyMesh/boundary';periodic=False
     if boundary.exists():
-        blocks=dict(re.findall(r'(\w+)\s*\{([^{}]+)\}',boundary.read_text()))
+        blocks=dict(re.findall(r'(\w+)\s*\{([^{}]+)\}',boundary.read_text(encoding='utf-8')))
         for low,high in [('cyclicLow','cyclicHigh'),('periodicLow','periodicHigh')]:
             if low in blocks and high in blocks:
                 a,b=blocks[low],blocks[high];na=re.search(r'nFaces\s+(\d+)',a);nb=re.search(r'nFaces\s+(\d+)',b)
@@ -56,12 +57,13 @@ def audit(folder):
       'Strict allGeometry convexity diagnostics are reported separately; the gate uses topology and explicit meshQuality thresholds.'])
     strict=folder/'strict-checkMesh.log'
     if strict.exists():
-        diagnostic=strict.read_text(errors='replace')
+        diagnostic=strict.read_text(encoding='utf-8',errors='replace')
         count=re.search(r'Concave cells.*?number of cells:\s*(\d+)',diagnostic)
         result['strict_geometry_diagnostic']={'passed':'Mesh OK.' in diagnostic and 'Failed ' not in diagnostic,'concave_cells':int(count[1]) if count else 0,'log':strict.name}
     yplus=re.findall(r'patch blade y\+ : min = ('+NUM+r'), max = ('+NUM+r'), average = ('+NUM+r')',solver)
     if yplus:result['blade_y_plus']=dict(zip(['min','max','average'],map(float,yplus[-1])))
-    (folder/'validation.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False));return result
+    if write:(folder/'validation.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
+    return result
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('job',type=pathlib.Path);a=p.parse_args();result=audit(a.job)
     print(json.dumps(result,ensure_ascii=False,indent=2));raise SystemExit(0 if result['workflow_verified'] else 2)

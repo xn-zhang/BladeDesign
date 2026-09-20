@@ -12,7 +12,7 @@ NUM=r'[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?'
 RESIDUAL=re.compile(r'Solving for (\w+), Initial residual = ('+NUM+r'), Final residual = ('+NUM+r')')
 
 def atomic(path,data):
-    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(data,ensure_ascii=False,indent=2,allow_nan=False));temp.replace(path)
+    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(data,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8');temp.replace(path)
 
 def parse_residuals(log):
     iteration=0.;rows=[]
@@ -26,7 +26,7 @@ def parse_residuals(log):
     return rows[-4000:]
 
 def load_template(folder):
-    folder=pathlib.Path(folder).resolve();m=json.loads((folder/'aeroblade-template.json').read_text())
+    folder=pathlib.Path(folder).resolve();m=json.loads((folder/'aeroblade-template.json').read_text(encoding='utf-8'))
     if not ID.fullmatch(m.get('id','')):raise ValueError('Invalid template id')
     if m.get('solver') not in SOLVERS:raise ValueError('Unsupported solver')
     for path in folder.rglob('*'):
@@ -151,7 +151,7 @@ class Manager:
         self.max_parallel=max_parallel;self.max_pending=max_pending;self.case_threads=case_threads
         self.pending=deque();self.running=set();self.closing=False;self.scheduler_revision=0
         self.root=pathlib.Path(jobs).resolve();self.root.mkdir(parents=True,exist_ok=True);self.templates={};self.template_errors=[];self.timeout=timeout
-        self.lock=threading.RLock();self.jobs={};self.processes={};self.cancelled=set();self.pool=concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel_limit);self.condition=threading.Condition(self.lock)
+        self.lock=threading.RLock();self.jobs={};self.submissions={};self.processes={};self.cancelled=set();self.pool=concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel_limit);self.condition=threading.Condition(self.lock)
         for path in sorted(pathlib.Path(templates).glob('*/aeroblade-template.json')):
             try:
                 tpl=load_template(path.parent)
@@ -160,10 +160,11 @@ class Manager:
             except (ValueError,OSError,KeyError,TypeError) as e:self.template_errors.append(path.parent.name+': '+str(e))
         for path in self.root.glob('*/job.json'):
             try:
-                j=json.loads(path.read_text())
+                j=json.loads(path.read_text(encoding='utf-8'))
                 if j.get('id')!=path.parent.name:continue
                 if j.get('status') not in TERMINAL:j.update(status='interrupted',message='服务重启；未完成任务需重新提交',updated_at=time.time());atomic(path,j)
                 self.jobs[j['id']]=j
+                if j.get('submission_key'):self.submissions[j['submission_key']]=j['id']
             except (ValueError,OSError):pass
     def health(self):
         with self.lock:return self._health()
@@ -198,20 +199,38 @@ class Manager:
             return json.loads(json.dumps(self.jobs[id]))
     def list(self):
         with self.lock:return [self.get(j['id']) for j in sorted(self.jobs.values(),key=lambda j:(j['status'] not in TERMINAL,j.get('created_at',0)),reverse=True)[:100]]
-    def submit(self,payload):
-        if not self.health()['ready']:raise ValueError('求解服务未就绪：检查 OpenFOAM 环境和算例模板')
+    def find_submission(self,key):
+        with self.lock:return self.get(self.submissions[key]) if key in self.submissions else None
+    def same_submission(self,payload):
+        old=self.find_submission(payload.get('submission_key'))
+        if old:
+            for key in ('template_id','parameters','conditions','batch_id','batch_case_id'):
+                if old.get(key)!=payload.get(key):raise ValueError('幂等键已用于不同的任务快照')
+        return old
+    def submit(self,payload,*,template_override=None):
         if not isinstance(payload,dict) or payload.get('schema')!='aeroblade-cfd-v1':raise ValueError('请求格式不匹配')
-        tpl=self.templates.get(payload.get('template_id'))
+        for key,length in [('submission_key',64),('batch_id',32),('batch_case_id',24)]:
+            if key in payload and (not isinstance(payload[key],str) or not re.fullmatch('[a-f0-9]{'+str(length)+'}',payload[key])):raise ValueError('批次任务标识无效')
+        with self.lock:
+            old=self.same_submission(payload)
+            if old:return old
+        if not self.health()['ready']:raise ValueError('求解服务未就绪：检查 OpenFOAM 环境和算例模板')
+        tpl=template_override if template_override is not None else self.templates.get(payload.get('template_id'))
         if not tpl:raise ValueError('Unknown template')
+        if tpl['id']!=payload.get('template_id'):raise ValueError('模板快照与请求不匹配')
         name=payload.get('name','')
         if not isinstance(name,str) or len(name)>80:raise ValueError('算例名称必须为80字以内文本')
         request={'name':name.strip(),'parameters':validate_template_design(tpl,payload.get('parameters')),'conditions':validate_conditions(tpl,payload.get('conditions'))}
         with self.lock:
+            old=self.same_submission(payload)
+            if old:return old
             if self.closing:raise ValueError('服务正在停止')
             if len(self.running)+len(self.pending)>=self.max_pending:raise QueueFullError('队列已满（运行与排队合计最多 '+str(self.max_pending)+' 个），请稍后重试')
             id=uuid.uuid4().hex;folder=self.root/id;folder.mkdir()
             j={'id':id,'name':request['name'],'status':'queued','stage':'queued','template_id':tpl['id'],'solver':tpl['solver'],'created_at':time.time(),'conditions':request['conditions'],'parameters':request['parameters'],'message':'等待可用计算槽位','convergence':'unknown'}
+            j.update({k:payload[k] for k in ('submission_key','batch_id','batch_case_id') if k in payload})
             self.jobs[id]=j;atomic(folder/'request.json',request);self.save(j);self.pending.append(id)
+            if j.get('submission_key'):self.submissions[j['submission_key']]=id
             try:self.pool.submit(self.run,id,tpl,request)
             except RuntimeError:
                 self.pending.remove(id);j.update(status='failed',message='任务调度器已停止',ended_at=time.time());self.save(j);raise ValueError('任务调度器已停止')

@@ -1,4 +1,6 @@
 import {initCFD} from './cfd.js';
+import {initSessionUI} from './session.js';
+initSessionUI();
 import {specs,presets,camber,thick,profile,section,build,stl,validate,isPritchard,getSpecs,getPresets,analyze,frame,reference} from './geometry.js';
 const $=s=>document.querySelector(s);let p={...presets.baseline},mesh,mode='solid',az=-.72,el=.16,zoom=1,auto=false,z=.5;const canvas=$('#blade'),ctx=canvas.getContext('2d');let toastTimer;
 function toast(t){$('#toast').textContent=t;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3000)}

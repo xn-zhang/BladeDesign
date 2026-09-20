@@ -1,4 +1,5 @@
 import {PARAMETER_FIELDS, demoReply, requestAssistant, validateProposal} from './design-assistant-client.js';
+import {initModelSettings} from './model-settings.js';
 
 const STORAGE_KEY = 'aeroblade-initial-design-v1';
 const MAX_MESSAGES = 60;
@@ -18,7 +19,7 @@ function element(tag, className, text) {
 export function initDesignAssistant({applyDesign,openDesign}) {
   const host=element('section','initial-workspace');host.id='initial-panel';host.hidden=true;
   host.innerHTML=`
-    <div class="initial-topbar"><div><span class="initial-dot"></span><strong>总师智能体</strong><span class="initial-context">初始设计</span></div><div><button id="initial-new">新建对话</button><button id="initial-skip" class="initial-manual">跳过对话，手动设计 ↗</button></div></div>
+    <div class="initial-topbar"><div><span class="initial-dot"></span><strong>总师智能体</strong><span class="initial-context">初始设计</span></div><div><button id="initial-model-settings">模型配置</button><button id="initial-new">新建对话</button><button id="initial-skip" class="initial-manual">跳过对话，手动设计 ↗</button></div></div>
     <div class="initial-scroll" id="initial-scroll">
       <div class="initial-welcome" id="initial-welcome"><div class="initial-emblem" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M42 8C19 11 12 26 14 49c8-14 21-9 30-22 5-7 5-13 4-18l-6-1Z" fill="currentColor" opacity=".14"/><path d="M44 9C22 11 15 25 14 49c9-14 22-10 30-22 4-6 5-12 4-18M19 42c4-15 12-24 25-29" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div><span class="initial-kicker">AEROBLADE · INITIAL DESIGN</span><h2>从一个设计目标开始</h2><p>与总师智能体梳理总体要求，逐步形成关键气动参数<br class="initial-break">与 Pritchard 初始叶型方案。</p>
       <div class="initial-path" aria-label="设计流程"><span>01 明确需求</span><i>→</i><span>02 形成初设</span><i>→</i><span>03 参数化设计</span></div>
@@ -34,6 +35,10 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   document.querySelector('footer').before(host);
   const $=selector=>host.querySelector(selector), input=$('#initial-input'),messagesNode=$('#initial-messages');
   let messages=[],provider='demo',candidate=null,version=0,revision=0,busy=false,controller=null,requestId=0,lastRequest=null,error='',applied=false;
+  const settings=initModelSettings({host,onChange:selected=>{
+    if(selected){provider=selected;$('#initial-provider').value=provider;}
+    candidate=null;revision++;lastRequest=null;error='';applied=false;renderMessages();updateControls();persist();
+  }});
 
   function persist() {
     try { sessionStorage.setItem(STORAGE_KEY,JSON.stringify({schema:1,messages,provider,candidate,version,revision,draft:input.value,lastRequest})); }
@@ -56,6 +61,7 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     $('#initial-send').disabled=busy || !input.value.trim() || messages.length>=MAX_MESSAGES-1;
     $('#initial-stop').hidden=!busy;$('#initial-send').hidden=busy;
     $('#initial-pending').hidden=!busy;$('#initial-provider').disabled=busy;
+    $('#initial-model-settings').disabled=busy;
     $('#initial-reference').hidden=provider!=='demo';$('#initial-reference').disabled=busy||messages.length>=MAX_MESSAGES-1;
     $('#initial-count').textContent=`${input.value.length} / 6000`;
     $('#initial-mode-note').textContent=provider==='demo'?'参考演示仅展示交互与预设，未接入模型推理。':'通过已配置的模型服务生成建议；采用前请审阅来源与假设。';
@@ -103,12 +109,14 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     renderMessages();updateControls();scrollLatest();persist();
     let timeout;
     try {
-      timeout=setTimeout(()=>{if(id===requestId){cancelRequest(false);error='请求超时（60秒），请重试或检查模型服务。';updateControls();persist();}},60000);
+      timeout=setTimeout(()=>{if(id===requestId){cancelRequest(false);error='请求超时（135秒），请重试或检查模型服务。';updateControls();persist();}},135000);
       let reply;
       if(provider==='demo'){
         await new Promise((resolve,reject)=>{const timer=setTimeout(resolve,450);signal.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('已停止','AbortError'));},{once:true});});
         reply=demoReply(text);
-      } else reply=await requestAssistant({provider,messages:messages.map(({role,content})=>({role,content})),signal});
+      } else {
+        reply=await requestAssistant({provider,messages:messages.map(({role,content})=>({role,content})),signal});
+      }
       if(id!==requestId)return;
       const verified=reply.proposal?validateProposal(reply.proposal):null;
       messages.push({role:'assistant',content:reply.message,provider});
@@ -125,6 +133,8 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   $('#initial-stop').onclick=()=>cancelRequest();
   $('#initial-retry').onclick=()=>{if(lastRequest)void send(lastRequest.text,true);};
   $('#initial-skip').onclick=()=>openDesign();
+  $('#initial-model-settings').onclick=async()=>{try{await settings.open(provider);}catch(err){error=err.message;updateControls();}};
+  document.addEventListener('aeroblade:sessionchange',e=>{if(!e.detail.authenticated&&provider!=='demo'){cancelRequest(false);candidate=null;revision++;lastRequest=null;renderMessages();updateControls();persist();}});
   $('#initial-provider').onchange=e=>{provider=e.target.value;candidate=null;revision++;lastRequest=null;error='';applied=false;renderMessages();updateControls();persist();};
   $('#initial-new').onclick=()=>{if(!messages.length&&!input.value)return;$('#initial-clear-dialog').showModal();};
   $('#initial-clear-dialog').addEventListener('close',()=>{
@@ -132,5 +142,6 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     cancelRequest(false);messages=[];candidate=null;version=0;revision=0;lastRequest=null;error='';applied=false;input.value='';renderMessages();updateControls();persist();input.focus();
   });
   restore();$('#initial-provider').value=provider;renderMessages();updateControls();scrollLatest();
+  host.getBatchBaseline=()=>candidate&&!busy&&candidate.revision===revision?{parameters:structuredClone(candidate.proposal.parameters),provenance:{source:'initial-proposal',provider:candidate.provider,version:candidate.version,sources:structuredClone(candidate.proposal.sources)}}:null;
   return host;
 }

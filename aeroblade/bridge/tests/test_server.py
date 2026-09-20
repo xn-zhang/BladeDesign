@@ -45,6 +45,22 @@ class APITests(unittest.TestCase):
         data=json.loads(body);self.assertEqual(data['job_id'],id)
         self.assertEqual(data['fields']['speed']['values'],[5.,0.])
     def test_unauthenticated_health_rejected(self):self.assertEqual(self.req('/api/health',token=False)[0],401)
+    def test_model_routes_require_auth_and_do_not_expose_credentials(self):
+        for path in ['config','test','clear','chat']:
+            self.assertEqual(self.req('/api/design-assistant/'+path,token=False,method='POST',data={})[0],401)
+        self.assertEqual(self.req('/api/design-assistant/config',token=False)[0],401)
+        cfg={'provider':'general','base_url':'https://model.example/v1','model':'test-model','api_key':'fixture-secret','auth':'bearer','timeout':30,'json_mode':False}
+        self.assertEqual(self.req('/api/design-assistant/config',method='POST',origin='https://untrusted.example',data=cfg)[0],403)
+        status,_,body=self.req('/api/design-assistant/config',method='POST',data=cfg)
+        self.assertEqual(status,200);self.assertNotIn(b'fixture-secret',body)
+        status,_,body=self.req('/api/design-assistant/config');self.assertEqual(status,200);self.assertNotIn(b'fixture-secret',body)
+        self.assertTrue(json.loads(body)['providers']['general']['has_key'])
+        self.assertEqual(self.req('/api/design-assistant/clear',method='POST',data={'provider':'general'})[0],200)
+        self.assertEqual(self.req('/api/design-assistant/chat',method='POST',data={'provider':'general','messages':[{'role':'user','content':'hello'}]})[0],503)
+    def test_model_frontend_modules_are_public_but_source_is_not(self):
+        for name in ['design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css']:
+            self.assertEqual(self.req('/'+name,token=False)[0],200)
+        self.assertEqual(self.req('/bridge/design_assistant.py',token=False)[0],404)
     def test_correct_origin_and_auth_get_real_not_ready(self):
         code,headers,body=self.req('/api/health',origin='https://design.example');self.assertEqual(code,200);self.assertFalse(json.loads(body)['ready']);self.assertEqual(headers['Access-Control-Allow-Origin'],'https://design.example')
     def test_other_origin_rejected(self):self.assertEqual(self.req('/api/jobs',origin='https://evil.example')[0],403)

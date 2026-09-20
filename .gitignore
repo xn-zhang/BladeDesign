@@ -15,3 +15,7 @@ api-token
 .DS_Store
 Thumbs.db
 .codegraph/
+aeroblade/private/
+aeroblade/ai-data/
+.venv-evaluation/
+.vercel/

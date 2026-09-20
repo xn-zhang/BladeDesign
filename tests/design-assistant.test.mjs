@@ -41,3 +41,12 @@ test('unconnected API and malformed reply surface actionable errors', async () =
   await assert.rejects(requestAssistant({provider:'general',messages:[],fetchImpl:async()=>({ok:false,status:404})}),/尚未接入/);
   await assert.rejects(requestAssistant({provider:'general',messages:[],fetchImpl:async()=>({ok:true,json:async()=>({message:'错误',proposal:proposal() , schema:'bad'})})}),/协议/);
 });
+test('real model requests use same-origin session transport without a platform token',async()=>{
+  let request;
+  await requestAssistant({provider:'general',messages:[],connection:{url:'http://127.0.0.1:8787',token:'fixture-platform-token'},fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({schema:'aeroblade-assistant-reply-v1',message:'hello',proposal:null})};}});
+  assert.equal(request.url,'/api/design-assistant/chat');
+  assert.equal(request.options.headers.Authorization,undefined);
+  assert.equal(request.options.credentials,'same-origin');
+  assert.equal(request.options.redirect,'error');
+  assert.equal(JSON.parse(request.options.body).api_key,undefined);
+});

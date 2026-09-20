@@ -1,0 +1,10 @@
+.git
+.vercel
+**/private/**
+**/runtime/**
+**/jobs/**
+**/dist/**
+**/__pycache__/**
+.env
+.env.*
+**/api-token
