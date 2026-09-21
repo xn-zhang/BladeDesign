@@ -40,10 +40,10 @@ python3 aeroblade/bridge/server.py --model-only --host 0.0.0.0 --port 8787
 
 ## Vercel 部署前端
 
-仓库已包含 `vercel.json` 与 `scripts/build_vercel.py`。脚本使用 [Vercel Build Output API](https://vercel.com/docs/build-output-api/configuration) 生成公开静态页面，并通过 [外部重写](https://vercel.com/docs/routing/rewrites) 将 `/api/*` 转发给独立后端。
+仓库根目录和 `aeroblade/web` 均包含独立的 `vercel.json` 与 `scripts/build_vercel.py` 入口。构建实现位于web目录内部，因此选择web作为Root Directory时不依赖目录外的文件。脚本使用 [Vercel Build Output API](https://vercel.com/docs/build-output-api/configuration) 生成公开静态页面，并通过 [外部重写](https://vercel.com/docs/routing/rewrites) 将 `/api/*` 转发给独立后端。
 
 1. 先部署上述有持久磁盘的模型后端，并为它配置HTTPS，例如 `https://backend.example.com`。
-2. 在Vercel导入本仓库，Root Directory使用仓库根目录，Framework选择Other，采用仓库中的Build Command。不要把输出目录改成整个仓库。
+2. 在Vercel导入本仓库，Root Directory可以选择 `aeroblade/web`，也可留空使用仓库根目录；Framework选择Other。两种方式的Build Command都是 `python3 scripts/build_vercel.py`。Output Directory关闭手动覆盖，使用构建器生成的 `.vercel/output`，不要设为整个仓库或 `.vercel/output/static`（会绕过同源API路由配置）。
 3. 在Vercel构建环境设置 `AEROBLADE_BACKEND_URL=https://backend.example.com`。这是后端基础地址，不带 `/api`；它不是密钥。未设置或不是HTTPS时构建会明确失败。
 4. 后端设置 `AEROBLADE_PUBLIC_ORIGIN=https://你的前端域名`，该来源须与实际访问网站一致。然后启动后端。
 5. 部署后访问前端网站，使用后端初始化的管理员账号登录，再配置DeepSeek等模型。不要把管理员密码或供应商Key放到Vercel前端构建环境中。
@@ -58,6 +58,8 @@ python scripts/build_vercel.py
 ```
 
 此命令只构建 `.vercel/output`，不会发布到云端。真实云部署需提供实际后端域名与平台项目。
+
+如果日志出现 `/vercel/path0/aeroblade/web/scripts/build_vercel.py` 找不到，说明部署根目录选了web，而旧版本仅在仓库根目录放了脚本。更新到同时包含两个入口的版本后重新部署即可；也可将Root Directory改为仓库根目录。每种入口都将输出写到所选根目录自身的 `.vercel/output`。构建命令中的下划线直接写 `_`，无需写反斜杠。
 
 ## CFD独立部署与兼容
 

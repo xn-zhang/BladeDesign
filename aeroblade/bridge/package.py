@@ -11,7 +11,7 @@ def package():
     files = [p for folder in ('bridge', 'web', 'docs', 'evaluation')
              for p in (ROOT / folder).rglob('*')
              if p.is_file() and not p.is_symlink()
-             and '__pycache__' not in p.parts and p.suffix in allowed]
+             and not {'__pycache__','.vercel'}&set(p.parts) and p.suffix in allowed]
     files.append(ROOT / 'README.md')
     with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(files):
