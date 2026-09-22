@@ -29,7 +29,8 @@ export async function ensureSession(){
   render();if(!dialog.open)dialog.showModal();return pending;
 }
 export async function sessionFetch(url,options={}){
-  const current=await ensureSession(),identity=epoch.capture();
+  const startingIdentity=epoch.capture(),startedAuthenticated=!!state?.authenticated;
+  const current=await ensureSession();if(startedAuthenticated)epoch.check(startingIdentity);const identity=epoch.capture();
   if(options.signal?.aborted)throw new DOMException('请求已停止','AbortError');
   const method=(options.method||'GET').toUpperCase();
   const response=await fetch(url,{...options,credentials:'same-origin',redirect:'error',headers:{...options.headers,...(method!=='GET'?{'X-CSRF-Token':current.csrf}:{})}});

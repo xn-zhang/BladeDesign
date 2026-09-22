@@ -91,10 +91,10 @@ class TaskTests(unittest.TestCase):
             t=s.submit('dataset',{});wait_for(lambda:s.get(t['id'])['status'] in ('completed','failed'),30);r=s.get(t['id']);self.assertEqual(r['status'],'completed',r['message']);self.assertEqual(r['result']['summary']['accepted'],0)
         finally:s.shutdown()
     def test_authenticated_api_static_allowlist_and_cross_origin(self):
-        state=StateStore(self.root/'state.sqlite3');http=make_server('127.0.0.1',0,None,'fixture-api-token-at-least-24-characters',set(),state=state,evaluation=self.s)
+        state=StateStore(self.root/'state.sqlite3');state.create_admin('admin','fixture-password-123');session_key,session=state.login('admin','fixture-password-123','local');http=make_server('127.0.0.1',0,None,'fixture-api-token-at-least-24-characters',set(),state=state,evaluation=self.s)
         thread=threading.Thread(target=http.serve_forever,daemon=True);thread.start();base='http://127.0.0.1:'+str(http.server_port)
         def req(path,auth=True,body=None,origin=None):
-            headers={'Authorization':'Bearer fixture-api-token-at-least-24-characters'} if auth else {}
+            headers={'Cookie':'aeroblade_session='+session_key,'X-CSRF-Token':session['csrf']} if auth else {}
             if body is not None:headers['Content-Type']='application/json'
             if origin:headers['Origin']=origin
             request=urllib.request.Request(base+path,headers=headers,data=None if body is None else json.dumps(body).encode())

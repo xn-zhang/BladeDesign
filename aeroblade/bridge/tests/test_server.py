@@ -25,6 +25,8 @@ class APITests(unittest.TestCase):
     def req(self,path,token=True,origin=None,method='GET',data=None):
         headers={}
         if token:headers['Authorization']='Bearer test-token-which-is-at-least-24-characters'
+        if token and hasattr(self,'browser_session'):
+            headers.pop('Authorization',None);headers['Cookie']='aeroblade_session='+self.browser_session[0];headers['X-CSRF-Token']=self.browser_session[1]['csrf']
         if origin:headers['Origin']=origin
         if data is not None:headers['Content-Type']='application/json';data=json.dumps(data).encode()
         request=urllib.request.Request(self.base+path,headers=headers,method=method,data=data)
@@ -51,6 +53,9 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.req('/api/design-assistant/config',token=False)[0],401)
         cfg={'provider':'general','base_url':'https://model.example/v1','model':'test-model','api_key':'fixture-secret','auth':'bearer','timeout':30,'json_mode':False}
         self.assertEqual(self.req('/api/design-assistant/config',method='POST',origin='https://untrusted.example',data=cfg)[0],403)
+        self.assertEqual(self.req('/api/design-assistant/config',method='POST',data=cfg)[0],403) # Machine CFD token is not a user session.
+        self.http.state_store.create_admin('admin','fixture-password-123')
+        self.browser_session=self.http.state_store.login('admin','fixture-password-123','local')
         status,_,body=self.req('/api/design-assistant/config',method='POST',data=cfg)
         self.assertEqual(status,200);self.assertNotIn(b'fixture-secret',body)
         status,_,body=self.req('/api/design-assistant/config');self.assertEqual(status,200);self.assertNotIn(b'fixture-secret',body)

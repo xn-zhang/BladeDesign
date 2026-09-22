@@ -2,6 +2,8 @@
 
 AeroBlade 是一个本地运行的叶片参数化设计与 OpenFOAM CFD 工作台。前端使用原生 JavaScript，计算桥接服务仅依赖 Python 标准库。
 
+邀请码注册、个人模型配置与设计/对话保存见 [多用户测试指南](aeroblade/docs/MULTI_USER.md)。
+
 账号登录、模型配置持久化，以及本地/独立后端/Vercel前端部署说明见 [部署指南](aeroblade/docs/DEPLOYMENT.md)。模型配置无需手动填写平台令牌。
 
 ## 当前功能

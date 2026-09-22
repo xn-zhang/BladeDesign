@@ -2,10 +2,11 @@ import unittest,json,urllib.request,http.cookiejar,urllib.error,threading,tempfi
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
 from session_store import StateStore
 from server import make_server
+from types import SimpleNamespace
 class UserAPITests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.s=StateStore(pathlib.Path(self.tmp.name)/'state.sqlite3');self.s.create_admin('admin','test-password-123')
-  self.http=make_server('127.0.0.1',0,None,'',set(),state=self.s);self.thread=threading.Thread(target=self.http.serve_forever,daemon=True);self.thread.start();self.base=f'http://127.0.0.1:{self.http.server_port}'
+  self.http=make_server('127.0.0.1',0,SimpleNamespace(health=lambda:{'ready':True}),'',set(),state=self.s);self.thread=threading.Thread(target=self.http.serve_forever,daemon=True);self.thread.start();self.base=f'http://127.0.0.1:{self.http.server_port}'
   self.clients={n:urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())) for n in ('admin','alice','bob')};self.csrf={}
  def tearDown(self):
   self.http.shutdown();self.http.server_close()
@@ -29,6 +30,8 @@ class UserAPITests(unittest.TestCase):
   self.assertFalse(self.req('bob','/api/design-assistant/config')[1]['providers']['general']['configured'])
   self.assertEqual(self.req('alice','/api/design-assistant/config',{**cfg,'base_url':'http://127.0.0.1:8787'})[0],400)
   self.assertEqual(self.req('alice','/api/jobs')[0],403)
+  self.assertFalse(self.req('alice','/api/batches')[1]['cfd_ready'])
+  self.assertTrue(self.req('alice','/api/health')[1]['model_only'])
   payload={'schema':'aeroblade-saved-conversation-v1','messages':[],'provider':'demo','candidate':None,'draft':'hello'}
   status,item=self.req('alice','/api/personal/conversations',{'name':'mine','payload':payload});self.assertEqual(status,200)
   self.assertEqual(self.req('bob','/api/personal/conversations/'+item['id'])[0],404)

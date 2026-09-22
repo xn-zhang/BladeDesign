@@ -18,4 +18,12 @@ class TransportTests(unittest.TestCase):
   with patch('model_transport.resolve_public',return_value=[]),patch('model_transport.PinnedHTTPSConnection') as conn:
    conn.return_value.getresponse.return_value.status=302
    with self.assertRaises(urllib.error.HTTPError):PublicModelTransport().open(urllib.request.Request('https://model.example'))
+ def test_actual_connection_pins_socket_and_checks_original_tls_name(self):
+  from model_transport import PinnedHTTPSConnection
+  from unittest.mock import MagicMock
+  address=(socket.AF_INET,socket.SOCK_STREAM,6,'',('8.8.8.8',443))
+  context=MagicMock();raw=MagicMock()
+  with patch('model_transport.ssl.create_default_context',return_value=context),patch('socket.socket',return_value=raw),patch('socket.getaddrinfo',side_effect=AssertionError('must not resolve twice')):
+   connection=PinnedHTTPSConnection('model.example',443,addresses=[address],timeout=5);connection.connect()
+   raw.connect.assert_called_once_with(('8.8.8.8',443));context.wrap_socket.assert_called_once_with(raw,server_hostname='model.example')
 if __name__=='__main__':unittest.main()

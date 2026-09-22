@@ -115,7 +115,7 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 design_match=re.fullmatch(r'/api/batches/designs/([a-f0-9]{24})',path)
                 if self.command=='GET' and design_match:self.send_json(user_batches.design(design_match[1]));return
                 if path=='/api/batches':
-                    if self.command=='GET':self.send_json({'batches':user_batches.list(),'cfd_ready':bool(manager and manager.health().get('ready'))});return
+                    if self.command=='GET':self.send_json({'batches':user_batches.list(),'cfd_ready':bool(user_batches.manager and user_batches.manager.health().get('ready'))});return
                     if self.command=='POST':
                         data=self.body()
                         if not isinstance(data,dict) or set(data)!={'design_batch_id'}:raise ValueError('只接受已校验参数包编号')
@@ -150,7 +150,7 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 self.send_json(user_models.clear(data['provider']));return
             if self.command=='POST' and path=='/api/design-assistant/chat':self.send_json(user_models.chat(self.body(2_500_000)));return
             if self.command=='POST' and path=='/api/design-assistant/batch-plan':self.send_json(user_models.batch_plan(self.body()));return
-            if self.command=='GET' and path=='/api/health':self.send_json(manager.health() if manager is not None else {'api':'aeroblade-model-v1','ready':True,'model_only':True});return
+            if self.command=='GET' and path=='/api/health':self.send_json(manager.health() if manager is not None and principal['role']=='admin' else {'api':'aeroblade-model-v1','ready':True,'model_only':True});return
             if manager is None:self.send_json({'error':'此后端仅提供模型服务，请连接独立 CFD 计算服务'},503);return
             if path=='/api/scheduler':
                 if self.command=='GET':self.send_json(manager.scheduler());return
