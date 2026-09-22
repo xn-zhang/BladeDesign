@@ -5,8 +5,11 @@ const epoch=new IdentityEpoch();let state=null,dialog=null,button=null,pending=n
 export const currentSession=()=>state;
 export const captureIdentity=()=>epoch.capture();
 export const checkIdentity=value=>epoch.check(value);
-function update(next){
+const channel=typeof document!=='undefined'&&typeof BroadcastChannel!=='undefined'?new BroadcastChannel('aeroblade-identity'):null;
+if(channel)channel.onmessage=async event=>{if(event.data?.userId!==(state?.user_id||null))update({authenticated:false},false);try{await refreshSession(false);}catch{update({authenticated:false},false);}};
+function update(next,broadcast=true){
   const previous=state;state=next;const changed=epoch.update(next.authenticated?next.user_id:null);
+  if(changed&&broadcast)channel?.postMessage({userId:next.user_id||null});
   if(button)button.textContent=next.authenticated?`账号 · ${next.username}`:'登录 / 注册';
   if(typeof document!=='undefined'&&changed){
     // Always clear the old identity before loading the new one, even A -> B.
@@ -20,7 +23,7 @@ async function authRequest(path,options={}){
   let data;try{data=await response.json();}catch{throw Error('平台登录服务未返回有效响应。');}
   if(!response.ok)throw Error(data.error||'登录请求失败');return data;
 }
-export async function refreshSession(){const serial=++refreshSerial,value=epoch.capture();const result=await authRequest('');if(serial!==refreshSerial) return state;epoch.check(value);update(result);return result;}
+export async function refreshSession(broadcast=true){const serial=++refreshSerial,value=epoch.capture();const result=await authRequest('');if(serial!==refreshSerial) return state;epoch.check(value);update(result,broadcast);return result;}
 export async function ensureSession(){
   if(pending)return pending;
   const current=await refreshSession();if(current?.authenticated)return current;
