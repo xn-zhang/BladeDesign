@@ -9,10 +9,10 @@ from test_batch_data import PLAN
 class BatchAPITests(unittest.TestCase):
     def test_model_only_generate_handoff_restore_and_authenticated_gates(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=pathlib.Path(tmp);state=StateStore(root/'state.sqlite3');evaluation=EvaluationService(root/'data',root/'jobs');batches=BatchService(root/'data',None,False);evaluation.batch_service=batches
+            root=pathlib.Path(tmp);state=StateStore(root/'state.sqlite3');state.create_admin('admin','fixture-password-123');key,session=state.login('admin','fixture-password-123','local');evaluation=EvaluationService(root/'data',root/'jobs');batches=BatchService(root/'data',None,False);evaluation.batch_service=batches
             http=make_server('127.0.0.1',0,None,'batch-api-fixture-token-32-characters',set(),state=state,evaluation=evaluation,batches=batches);threading.Thread(target=http.serve_forever,daemon=True).start();url='http://127.0.0.1:'+str(http.server_port)
             def req(path,body=None,auth=True,origin=None):
-                headers={'Authorization':'Bearer batch-api-fixture-token-32-characters'} if auth else {}
+                headers={'Cookie':'aeroblade_session='+key,'X-CSRF-Token':session['csrf']} if auth else {}
                 if body is not None:headers['Content-Type']='application/json'
                 if origin:headers['Origin']=origin
                 r=urllib.request.Request(url+path,headers=headers,data=None if body is None else json.dumps(body).encode())
