@@ -104,12 +104,12 @@ def normalize_reply(content):
 
 
 class ModelService:
-    def __init__(self, environ=None, store=None):
+    def __init__(self, environ=None, store=None, transport=None, slots=None):
         self.configs = {}
         self.store = None
         self.lock = threading.RLock()
-        self.slots = threading.BoundedSemaphore(2)
-        self.opener = urllib.request.build_opener(NoRedirect())
+        self.slots = slots or threading.BoundedSemaphore(2)
+        self.opener = transport or urllib.request.build_opener(NoRedirect())
         env = os.environ if environ is None else environ
         saved=store.load_models() if store else None
         for provider in PROVIDERS:
@@ -132,6 +132,7 @@ class ModelService:
         provider = data.get('provider')
         if provider not in PROVIDERS:raise ValueError('模型类型不正确')
         base = endpoint(data.get('base_url'))
+        if hasattr(self.opener,'validate_url'):self.opener.validate_url(base)
         model = clean_text(data.get('model'),'模型名称',200)
         auth = data.get('auth','bearer')
         if auth not in ('bearer','none'):raise ValueError('鉴权方式不正确')

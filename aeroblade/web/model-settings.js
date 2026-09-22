@@ -65,7 +65,7 @@ export function initModelSettings({host,onChange}) {
   $('#model-keep').onclick=()=>{$('#model-clear-confirm').hidden=true;};$('#model-clear-do').onclick=()=>void run('clear');
   $('#model-close').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{serial++;controller?.abort();controller=null;setBusy(false);$('#model-key').value='';});
-  document.addEventListener('aeroblade:sessionchange',event=>{if(!event.detail.authenticated){configs={};if(dialog.open)dialog.close();}});
+  document.addEventListener('aeroblade:sessionchange',event=>{configs={};if(dialog.open)dialog.close();});
   return {
     async open(provider){
       await ensureSession();

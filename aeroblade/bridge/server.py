@@ -6,12 +6,16 @@ from core import Manager, ROOT, QueueFullError
 from design_assistant import ModelService, ModelError
 from session_store import StateStore, AuthError, COOKIE_NAME, SESSION_SECONDS
 
+from user_services import UserServices
+from account_routes import dispatch as account_dispatch, fields
+
 MAX_BODY=200_000
 
 def make_server(host,port,manager,token,origins,model_service=None,state=None,public_origin='',allow_setup=False,evaluation=None,batches=None):
     if token and len(token)<24:raise ValueError('AEROBLADE_API_TOKEN must contain at least 24 characters')
     state=state if state is not None else StateStore()
     models = model_service if model_service is not None else ModelService(store=state)
+    services=UserServices(state,models,manager,evaluation,batches)
     origins=set(origins)
     if public_origin:origins.add(public_origin)
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -38,11 +42,16 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
             origin=self.headers.get('Origin')
             if origin and origin not in origins:self.send_json({'error':'Origin is not allowed'},403);return False
             actual=self.headers.get('Authorization','')
-            if token and hmac.compare_digest(actual.encode(),('Bearer '+token).encode()):return True
+            if token and hmac.compare_digest(actual.encode(),('Bearer '+token).encode()):
+                path=urllib.parse.urlsplit(self.path).path
+                if path not in ('/api/health','/api/scheduler','/api/jobs') and not path.startswith('/api/jobs/'):
+                    self.send_json({'error':'计算令牌不能访问账号或模型配置'},403);return False
+                self.principal={'user_id':state.admin_id(),'role':'admin','machine':True};return True
             session=state.session(self.session_token())
             if not session:self.send_json({'error':'请登录平台后继续','code':'login_required'},401);return False
             if self.command!='GET' and not hmac.compare_digest(self.headers.get('X-CSRF-Token','').encode(),session['csrf'].encode()):
                 self.send_json({'error':'会话校验失败，请刷新页面后重试','code':'csrf_failed'},403);return False
+            self.principal=session
             return True
         def do_OPTIONS(self):
             if self.headers.get('Origin') not in origins:self.send_json({'error':'Origin is not allowed'},403);return
@@ -66,10 +75,10 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/aeroblade.zip':'aeroblade.zip'}
                 for name in ('design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css'):
                     allow['/'+name]=name
-                for name in ('session.js','session.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
+                for name in ('session.js','session.css','session-state.js','account-admin.js','personal-workspace.js','personal-workspace.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
                 if path not in allow:raise KeyError('Not found')
                 self.send_file(ROOT/('dist' if path=='/aeroblade.zip' else 'web')/allow[path]);return
-            if path in ('/api/session','/api/session/login','/api/session/setup','/api/session/logout'):
+            if path in ('/api/session','/api/session/login','/api/session/setup','/api/session/logout','/api/session/register'):
                 origin=self.headers.get('Origin')
                 if (origin and origin not in origins) or (self.command=='POST' and origin not in origins):
                     self.send_json({'error':'Origin is not allowed'},403);return
@@ -77,10 +86,11 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 local_hosts={'127.0.0.1:'+str(self.server.server_port),'localhost:'+str(self.server.server_port)}
                 setup_allowed=allow_setup and not public_origin and self.client_address[0] in ('127.0.0.1','::1') and self.headers.get('Host') in local_hosts
                 if self.command=='GET' and path=='/api/session':
-                    self.send_json({'authenticated':bool(session),'username':session['username'] if session else None,'csrf':session['csrf'] if session else None,'setup_required':not state.initialized(),'setup_allowed':setup_allowed});return
-                if self.command=='POST' and path in ('/api/session/login','/api/session/setup'):
+                    self.send_json({'authenticated':bool(session),**(session or {'username':None,'user_id':None,'role':None,'csrf':None}),'setup_required':not state.initialized(),'setup_allowed':setup_allowed});return
+                if self.command=='POST' and path in ('/api/session/login','/api/session/setup','/api/session/register'):
                     data=self.body()
-                    if not isinstance(data,dict) or set(data)!={'username','password'}:raise ValueError('请填写用户名和密码')
+                    fields(data,('username','password','invite') if path.endswith('/register') else ('username','password'))
+                    if path.endswith('/register'):state.register(data['username'],data['password'],data['invite'],self.client_address[0])
                     if path.endswith('/setup'):
                         if not setup_allowed or origin not in {'http://'+name for name in local_hosts}:raise AuthError('请在服务器启动环境中初始化管理员账号',403)
                         state.create_admin(data['username'],data['password'])
@@ -91,47 +101,55 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                     state.logout(self.session_token());self.cookie('',clear=True);self.send_json({'authenticated':False});return
                 raise KeyError('Not found')
             if not self.authorized():return
+            principal=self.principal
+            if not principal.get('machine'):
+                if account_dispatch(self,path,principal,state,services):return
+                owned=services.for_user(principal,compute=path.startswith(('/api/evaluation/','/api/batches')))
+            else:owned={'models':None,'evaluation':None,'batches':None}
+            user_models=owned['models'];user_evaluation=owned['evaluation'];user_batches=owned['batches']
+            if principal['role']!='admin' and (path.startswith('/api/jobs') or path=='/api/scheduler'):
+                raise AuthError('共享 CFD 计算仅管理员可用',403)
             if path.startswith('/api/batches'):
-                if batches is None:raise ValueError('批次服务未启动，请使用新版完整bridge')
-                if self.command=='GET' and path=='/api/batches/designs':self.send_json({'designs':batches.designs()});return
+                if user_batches is None:raise ValueError('批次服务未启动，请使用新版完整bridge')
+                if self.command=='GET' and path=='/api/batches/designs':self.send_json({'designs':user_batches.designs()});return
                 design_match=re.fullmatch(r'/api/batches/designs/([a-f0-9]{24})',path)
-                if self.command=='GET' and design_match:self.send_json(batches.design(design_match[1]));return
+                if self.command=='GET' and design_match:self.send_json(user_batches.design(design_match[1]));return
                 if path=='/api/batches':
-                    if self.command=='GET':self.send_json({'batches':batches.list(),'cfd_ready':bool(manager and manager.health().get('ready'))});return
+                    if self.command=='GET':self.send_json({'batches':user_batches.list(),'cfd_ready':bool(manager and manager.health().get('ready'))});return
                     if self.command=='POST':
                         data=self.body()
                         if not isinstance(data,dict) or set(data)!={'design_batch_id'}:raise ValueError('只接受已校验参数包编号')
-                        self.send_json(batches.create(data['design_batch_id']),201);return
+                        self.send_json(user_batches.create(data['design_batch_id']),201);return
                 match=re.fullmatch(r'/api/batches/([a-f0-9]{32})(?:/(start|pause|resume|cancel|retry))?',path)
                 if match:
                     bid,action=match.groups()
-                    if self.command=='GET' and action is None:self.send_json(batches.get(bid));return
-                    if self.command=='POST' and action:self.send_json(batches.control(bid,action,self.body()));return
+                    if self.command=='GET' and action is None:self.send_json(user_batches.get(bid));return
+                    if self.command=='POST' and action:self.send_json(user_batches.control(bid,action,self.body()));return
                 raise KeyError('Not found')
             if path.startswith('/api/evaluation/'):
-                if evaluation is None:self.send_json({'error':'当前部署未启动评估计算服务，请使用新版Python bridge'},503);return
+                if user_evaluation is None:self.send_json({'error':'当前部署未启动评估计算服务，请使用新版Python bridge'},503);return
                 endpoint=path.removeprefix('/api/evaluation/')
-                if self.command=='GET' and endpoint=='capabilities':self.send_json(evaluation.capabilities());return
-                if self.command=='GET' and endpoint in ('datasets','models','tasks'):self.send_json({endpoint:evaluation.catalog(endpoint)});return
-                if self.command=='POST' and endpoint in ('dataset','train','predict','analyze','evaluate','optimize','batch_generate','batch_import'):self.send_json(evaluation.submit(endpoint,self.body(2_500_000 if endpoint=='batch_import' else MAX_BODY)),202);return
+                if self.command=='GET' and endpoint=='capabilities':self.send_json(user_evaluation.capabilities());return
+                if self.command=='GET' and endpoint in ('datasets','models','tasks'):self.send_json({endpoint:user_evaluation.catalog(endpoint)});return
+                if self.command=='POST' and endpoint in ('dataset','train','predict','analyze','evaluate','optimize','batch_generate','batch_import'):self.send_json(user_evaluation.submit(endpoint,self.body(2_500_000 if endpoint=='batch_import' else MAX_BODY)),202);return
                 match=re.fullmatch(r'tasks/([a-f0-9]{32})(?:/(cancel|pause|resume))?',endpoint)
                 if match:
                     tid,action=match.groups()
-                    if self.command=='GET' and action is None:self.send_json(evaluation.get(tid));return
+                    if self.command=='GET' and action is None:self.send_json(user_evaluation.get(tid));return
                     if self.command=='POST' and action:
                         if self.body()!={}:raise ValueError('控制操作不接受附加字段')
-                        self.send_json(evaluation.control(tid,action));return
+                        self.send_json(user_evaluation.control(tid,action));return
                 raise KeyError('Not found')
             if path=='/api/design-assistant/config':
-                if self.command=='GET':self.send_json(models.describe());return
-                if self.command=='POST':self.send_json(models.configure(self.body()));return
-            if self.command=='POST' and path=='/api/design-assistant/test':self.send_json(models.test(self.body()));return
+                if self.command=='GET':self.send_json(user_models.describe());return
+                if self.command=='POST':self.send_json(user_models.configure(self.body()));return
+            if self.command=='POST' and path=='/api/design-assistant/test':self.send_json(user_models.test(self.body()));return
             if self.command=='POST' and path=='/api/design-assistant/clear':
                 data=self.body()
                 if not isinstance(data,dict) or set(data)!={'provider'}:raise ValueError('只允许指定 provider')
-                self.send_json(models.clear(data['provider']));return
-            if self.command=='POST' and path=='/api/design-assistant/chat':self.send_json(models.chat(self.body(2_500_000)));return
-            if self.command=='POST' and path=='/api/design-assistant/batch-plan':self.send_json(models.batch_plan(self.body()));return
+                self.send_json(user_models.clear(data['provider']));return
+            if self.command=='POST' and path=='/api/design-assistant/chat':self.send_json(user_models.chat(self.body(2_500_000)));return
+            if self.command=='POST' and path=='/api/design-assistant/batch-plan':self.send_json(user_models.batch_plan(self.body()));return
             if self.command=='GET' and path=='/api/health':self.send_json(manager.health() if manager is not None else {'api':'aeroblade-model-v1','ready':True,'model_only':True});return
             if manager is None:self.send_json({'error':'此后端仅提供模型服务，请连接独立 CFD 计算服务'},503);return
             if path=='/api/scheduler':
@@ -171,6 +189,11 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
     httpd=http.server.ThreadingHTTPServer((host,port),Handler)
     if host in ('127.0.0.1','localhost','::1'):
         origins.update({'http://127.0.0.1:'+str(httpd.server_port),'http://localhost:'+str(httpd.server_port)})
+    original_close=httpd.server_close
+    def close_server():
+        original_close();services.close()
+    httpd.server_close=close_server
+    httpd.user_services=services
     httpd.state_store=state
     return httpd
 

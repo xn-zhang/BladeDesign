@@ -1,3 +1,4 @@
+import {initPersonalWorkspace} from './personal-workspace.js';
 import {isPritchard,analyze,validate} from './geometry.js';
 import {initFlowView} from './flow-view.js';
 import {initEvaluationWorkspace} from './evaluation.js';
@@ -27,12 +28,14 @@ export function initCFD(getDesign,applyDesign) {
   const flowView=initFlowView($('#cfd-flow'),id=>api('/jobs/'+id+'/flow'));
   const trigger=document.createElement('button');trigger.id='open-cfd';trigger.textContent='CFD 仿真';
   const designTab=document.createElement('button');designTab.id='open-design';designTab.textContent='参数化设计';
-  const {evaluationPanel,aiPanel,showTraining,buildBatchDataset}=initEvaluationWorkspace({getDesign,applyDesign,openDesign:()=>workspace('design'),openAI:()=>workspace('ai'),openEvaluation:()=>workspace('evaluation'),openAssistant:()=>workspace('initial'),openModelSettings:()=>{workspace('initial');$('#initial-model-settings').click();}});
+  const {evaluationPanel,aiPanel,showTraining,buildBatchDataset,getConditions,applyConditions}=initEvaluationWorkspace({getDesign,applyDesign,openDesign:()=>workspace('design'),openAI:()=>workspace('ai'),openEvaluation:()=>workspace('evaluation'),openAssistant:()=>workspace('initial'),openModelSettings:()=>{workspace('initial');$('#initial-model-settings').click();}});
   const aiTab=document.createElement('button');aiTab.id='open-ai';aiTab.textContent='AI 推理';
   const evaluationTab=document.createElement('button');evaluationTab.id='open-evaluation';evaluationTab.textContent='评估与优化';
   const tabs=document.createElement('nav');tabs.className='workspace-tabs';tabs.setAttribute('aria-label','工作区切换');tabs.setAttribute('role','tablist');tabs.append(designTab,trigger,aiTab,evaluationTab);$('.header-actions').before(tabs);
   const design=$('main'),title=$('.workspace-title');design.id='design-workspace';design.setAttribute('role','tabpanel');design.setAttribute('aria-labelledby','open-design');host.setAttribute('role','tabpanel');host.setAttribute('aria-labelledby','open-cfd');
   const initialPanel=initDesignAssistant({applyDesign,openDesign:()=>{workspace('design');designTab.focus();}}),initialTab=document.createElement('button');initialTab.id='open-initial';initialTab.textContent='初始设计';tabs.prepend(initialTab);
+  initPersonalWorkspace({getDesign,applyDesign,getConditions,applyConditions,assistant:initialPanel,openDesign:()=>workspace('design')});
+  document.addEventListener('aeroblade:sessionchange',e=>{if(!e.detail.authenticated){resetConnection();$('#cfd-token').value='';$('#cfd-jobs').replaceChildren();$('#cfd-template').replaceChildren();applyConditions({inletTotalPressure:100200,inletTotalTemperature:300,outletStaticPressure:100000,iterations:3000});}});
   const workspaces=[['initial',initialTab,initialPanel],['design',designTab,design],['cfd',trigger,host],['ai',aiTab,aiPanel],['evaluation',evaluationTab,evaluationPanel]];
   for(const [,tab,panel] of workspaces){tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',tab.id);}
   function workspace(mode){document.body.dataset.workspace=mode;title.hidden=mode!=='design';for(const [id,tab,panel] of workspaces){const active=id===mode;panel.hidden=!active;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;}window.scrollTo(0,0);if(mode==='cfd')snapshot();}

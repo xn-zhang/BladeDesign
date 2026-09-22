@@ -53,3 +53,5 @@ $('#export').onclick=()=>{modal('导出设计','<p>选择需要的设计数据�
 $('#method').onclick=()=>{if(isPritchard(p)){modal('Pritchard 1985 截面模型','<p>依据 L. J. Pritchard, An Eleven Parameter Axial Turbine Airfoil Geometry Model, ASME 85-GT-219，式1–16及附录C。<a href="https://doi.org/10.1115/85-GT-219" target="_blank" rel="noopener">原论文 ↗</a></p><p>11个参数控制五段轮廓：前/尾缘圆弧、喉后吸力面圆弧与两段三次多项式。进口楔角输入为半角；尾缘半楔角由C¹闭合方程求出。角度为轴向有符号切线角，长度单位mm。</p><p>默认值来自图19参考算例，统一换算mm，喉道按该算例默认公式展开；并非最佳叶片。当前支持出口负角的常规叶型分支，不使用原FORTRAN隐式默认值。三维展示为等截面直线拉伸。</p>');return;}modal('旧版概念几何模型','<p><strong>截面模型</strong><br>弯度线为三次 Hermite 曲线，两端弯度为零，端点切线由前、后缘弯度线角控制。厚度使用可移动峰值的幂函数，沿局部 y 方向叠加；尾缘添加 0.4% 弦长的有限厚度。</p><p><strong>展向模型</strong><br>截面弦长、安装角及轴向／周向积叠偏移沿展向线性变化。安装角绕半弦点旋转。展弦比使用叶高除以平均弦长，体积由闭合三角网格积分。</p><p><strong>适用范围</strong><br>用于参数探索、概念几何可视化与算法原型。前后缘角为几何切线角，不等于流动进出口角；曲面需经制造级 CAD 重构和网格质量检查后才能用于工程流程。未进行气动、强度、热负荷或可制造性验证。</p>');};renderControls();sync();
 
 initCFD(()=>({...p}),parameters=>{const next=validate(parameters);build(next);p=next;renderControls();custom();sync();});
+
+document.addEventListener('aeroblade:sessionchange',()=>{p={...presets.baseline};renderControls();custom();sync();});

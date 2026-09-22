@@ -10,7 +10,8 @@ def write(path,data):
     path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(data,ensure_ascii=False,allow_nan=False),encoding='utf-8');os.replace(tmp,path)
 
 class EvaluationService:
-    def __init__(self,root=None,jobs=None,manager=None,python=None):
+    def __init__(self,root=None,jobs=None,manager=None,python=None,max_active=4,shared_slots=None):
+        self.max_active=max_active;self.shared_slots=shared_slots
         self.root=pathlib.Path(root or ROOT/'ai-data').resolve();self.jobs=pathlib.Path(jobs or ROOT/'jobs').resolve();self.manager=manager
         self.batch_service=None
         venv=ROOT.parent/'.venv-evaluation'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
@@ -65,9 +66,21 @@ class EvaluationService:
         with self.lock:
             if self.stopped:raise ValueError('服务正在关闭')
             active=[t for t in self.tasks.values() if t['status'] not in TERMINAL]
-            if len(active)>=4:raise ValueError('评估队列已满（最多4个任务）')
+            if len(active)>=self.max_active:raise ValueError('个人评估队列已满')
             if kind=='optimize' and any(t['kind']=='optimize' for t in active):raise ValueError('已有优化任务运行，请先完成或取消')
-            tid=uuid.uuid4().hex;t={'id':tid,'kind':kind,'status':'queued','created_at':time.time(),'payload':copy.deepcopy(payload),'message':'排队等待独立计算进程','result':None};self.tasks[tid]=t;self.save(t);self.pool.submit(self.run,tid);return copy.deepcopy(t)
+            tid=uuid.uuid4().hex;t={'id':tid,'kind':kind,'status':'queued','created_at':time.time(),'payload':copy.deepcopy(payload),'message':'排队等待独立计算进程','result':None};
+            if self.shared_slots is not None and not self.shared_slots.acquire(blocking=False):raise ValueError('服务器评估队列已满')
+            try:
+                self.tasks[tid]=t;self.save(t);self.pool.submit(self.run_bounded,tid)
+            except Exception:
+                self.tasks.pop(tid,None)
+                if self.shared_slots is not None:self.shared_slots.release()
+                raise
+            return copy.deepcopy(t)
+    def run_bounded(self,tid):
+        try:self.run(tid)
+        finally:
+            if self.shared_slots is not None:self.shared_slots.release()
     def control(self,tid,action):
         with self.lock:
             t=self.tasks.get(tid)
@@ -142,4 +155,4 @@ class EvaluationService:
                 if proc.poll() is None:proc.terminate()
             for t in self.tasks.values():
                 if t.get('active_job') and t['status'] not in TERMINAL and self.manager:self.manager.cancel(t['active_job'])
-        self.pool.shutdown(wait=True,cancel_futures=True)
+        self.pool.shutdown(wait=True,cancel_futures=False)

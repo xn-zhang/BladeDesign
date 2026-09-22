@@ -1,3 +1,4 @@
+import {currentSession} from './session.js';
 import {PARAMETER_FIELDS, demoReply, requestAssistant, validateProposal} from './design-assistant-client.js';
 import {initModelSettings} from './model-settings.js';
 
@@ -17,6 +18,7 @@ function element(tag, className, text) {
 }
 
 export function initDesignAssistant({applyDesign,openDesign}) {
+  let storageOwner=currentSession()?.user_id||'anonymous';
   const host=element('section','initial-workspace');host.id='initial-panel';host.hidden=true;
   host.innerHTML=`
     <div class="initial-topbar"><div><span class="initial-dot"></span><strong>总师智能体</strong><span class="initial-context">初始设计</span></div><div><button id="initial-model-settings">模型配置</button><button id="initial-new">新建对话</button><button id="initial-skip" class="initial-manual">跳过对话，手动设计 ↗</button></div></div>
@@ -41,12 +43,12 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   }});
 
   function persist() {
-    try { sessionStorage.setItem(STORAGE_KEY,JSON.stringify({schema:1,messages,provider,candidate,version,revision,draft:input.value,lastRequest})); }
+    try { sessionStorage.setItem(STORAGE_KEY+':'+storageOwner,JSON.stringify({schema:1,messages,provider,candidate,version,revision,draft:input.value,lastRequest})); }
     catch { $('#initial-storage-note').hidden=false;$('#initial-storage-note').textContent='当前浏览器无法保存会话；离开或刷新页面后，本页对话可能丢失。'; }
   }
   function restore() {
     try {
-      const saved=sessionStorage.getItem(STORAGE_KEY);if(!saved)return;
+      const saved=sessionStorage.getItem(STORAGE_KEY+':'+storageOwner);if(!saved)return;
       if(saved.length>2000000)throw Error('会话过大');
       const data=JSON.parse(saved);
       if(data.schema!==1 || !providerNames[data.provider] || !Array.isArray(data.messages) || data.messages.length>MAX_MESSAGES)throw Error('会话格式错误');
@@ -134,7 +136,7 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   $('#initial-retry').onclick=()=>{if(lastRequest)void send(lastRequest.text,true);};
   $('#initial-skip').onclick=()=>openDesign();
   $('#initial-model-settings').onclick=async()=>{try{await settings.open(provider);}catch(err){error=err.message;updateControls();}};
-  document.addEventListener('aeroblade:sessionchange',e=>{if(!e.detail.authenticated&&provider!=='demo'){cancelRequest(false);candidate=null;revision++;lastRequest=null;renderMessages();updateControls();persist();}});
+  document.addEventListener('aeroblade:sessionchange',e=>{cancelRequest(false);messages=[];candidate=null;version=0;revision++;lastRequest=null;error='';applied=false;provider='demo';input.value='';storageOwner=e.detail.userId||'anonymous';if(e.detail.authenticated)restore();$('#initial-provider').value=provider;renderMessages();updateControls();});
   $('#initial-provider').onchange=e=>{provider=e.target.value;candidate=null;revision++;lastRequest=null;error='';applied=false;renderMessages();updateControls();persist();};
   $('#initial-new').onclick=()=>{if(!messages.length&&!input.value)return;$('#initial-clear-dialog').showModal();};
   $('#initial-clear-dialog').addEventListener('close',()=>{
@@ -143,5 +145,11 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   });
   restore();$('#initial-provider').value=provider;renderMessages();updateControls();scrollLatest();
   host.getBatchBaseline=()=>candidate&&!busy&&candidate.revision===revision?{parameters:structuredClone(candidate.proposal.parameters),provenance:{source:'initial-proposal',provider:candidate.provider,version:candidate.version,sources:structuredClone(candidate.proposal.sources)}}:null;
+  host.getConversationSnapshot=()=>({schema:'aeroblade-saved-conversation-v1',messages:messages.map(({role,content})=>({role,content})),provider,candidate:candidate?.proposal||null,draft:input.value});
+  host.restoreConversationSnapshot=snapshot=>{
+    if(snapshot.schema!=='aeroblade-saved-conversation-v1')throw Error('对话格式无效');
+    const proposal=snapshot.candidate?validateProposal(snapshot.candidate):null;
+    cancelRequest(false);messages=structuredClone(snapshot.messages);provider=snapshot.provider;revision++;candidate=proposal?{proposal,provider,revision,version:++version}:null;lastRequest=null;error='';applied=false;input.value=snapshot.draft;$('#initial-provider').value=provider;renderMessages();updateControls();persist();scrollLatest();document.querySelector('#open-initial')?.click();
+  };
   return host;
 }
