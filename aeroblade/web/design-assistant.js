@@ -31,7 +31,7 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     <div class="initial-bottom"><div class="initial-composer"><form id="initial-form"><label class="initial-sr" for="initial-input">输入总体设计要求或补充条件</label><textarea id="initial-input" rows="3" maxlength="6000" placeholder="描述你的设计目标，例如：设计对象、流量、功率、效率与工况要求…"></textarea><div class="initial-composer-actions"><div><label class="initial-sr" for="initial-provider">模型来源</label><select id="initial-provider"><option value="demo">参考演示 · 无需连接</option><option value="general">通用大模型</option><option value="domain">航发领域大模型</option></select><button type="button" id="initial-reference">载入参考方案</button></div><div><span id="initial-count">0 / 6000</span><button type="button" id="initial-stop" hidden>停止</button><button type="submit" id="initial-send" class="primary" disabled>发送 ↑</button></div></div></form></div>
       <div class="initial-footnote"><span id="initial-mode-note">参考演示仅展示交互与预设，未接入模型推理。</span><span>Enter 发送 · Shift + Enter 换行</span></div><p id="initial-storage-note" role="status" hidden></p>
     </div>
-    <dialog id="initial-clear-dialog"><form method="dialog"><h2>开始新的初始设计？</h2><p>将清除本页对话、草稿与待确认方案，叶片设计工作区中的参数保持不变。</p><div class="initial-dialog-actions"><button value="cancel">保留对话</button><button value="clear" class="primary">开始新对话</button></div></form></dialog>`;
+    <dialog id="initial-clear-dialog"><form method="dialog"><h2>开始新的初始设计？</h2><p>将清除本页对话、草稿与待确认方案，参数化设计工作区中的参数保持不变。</p><div class="initial-dialog-actions"><button value="cancel">保留对话</button><button value="clear" class="primary">开始新对话</button></div></form></dialog>`;
   document.querySelector('footer').before(host);
   const $=selector=>host.querySelector(selector), input=$('#initial-input'),messagesNode=$('#initial-messages');
   let messages=[],provider='demo',candidate=null,version=0,revision=0,busy=false,controller=null,requestId=0,lastRequest=null,error='',applied=false;
@@ -84,7 +84,7 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     const body=element('tbody');for(const [key,label,,,,unit] of PARAMETER_FIELDS){const row=element('tr');const name=element('th','',label);name.scope='row';row.append(name,element('td','',`${Number(p.parameters[key].toFixed(5))} ${unit}`),element('td','',p.sources[key]));body.append(row);}table.append(body);wrap.append(table);details.append(wrap);card.append(details);
     card.append(element('p','initial-span-note',`拉伸展示展宽 ${p.parameters.height} mm · 独立设置，不计入11参数`));
     for(const [title,items] of [['方案假设',p.assumptions],['后续验证',p.warnings]]){if(items.length){const block=element('div','initial-evidence');block.append(element('h3','',title));const list=element('ul');items.forEach(text=>list.append(element('li','',text)));block.append(list);card.append(block);}}
-    const actions=element('div','initial-proposal-actions'),button=element('button','primary',applied?'再次采用并进入叶片设计 →':'采用此方案并进入叶片设计 →');button.disabled=busy;
+    const actions=element('div','initial-proposal-actions'),button=element('button','primary',applied?'再次采用并进入参数化设计 →':'采用此方案并进入参数化设计 →');button.disabled=busy;
     button.onclick=()=>{
       try { const verified=validateProposal(candidate.proposal);applyDesign(verified.parameters);applied=true;renderMessages();openDesign(); }
       catch(err){error=`方案未应用：${err.message}`;updateControls();scrollLatest();}

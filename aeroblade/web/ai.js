@@ -55,7 +55,7 @@ export function initAIWorkspace() {
             <div class="ai-card-heading"><h3>${icon('data')}数据与输入</h3><span class="ai-state">待接入</span></div>
             <label for="ai-dataset">训练数据集</label><select id="ai-dataset" disabled><option>尚未接入数据集</option></select>
             <div class="ai-input-summary"><span>有效样本 <b>—</b></span><span>独立几何 <b>—</b></span></div>
-            <div class="ai-input-source"><span>几何来源</span><strong>叶片设计工作区</strong></div>
+            <div class="ai-input-source"><span>几何来源</span><strong>参数化设计工作区</strong></div>
             <div class="ai-tags"><span>11 参数</span><span>物理工况</span><span>CFD 标签</span></div>
             <details class="ai-details"><summary>数据准备与质量检查</summary><p>预留几何去重、收敛筛选、场数据检查与训练 / 验证 / 测试集划分。</p><button disabled>管理数据集</button></details>
           </section>

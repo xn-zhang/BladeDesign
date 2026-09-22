@@ -26,9 +26,9 @@ export function initCFD(getDesign,applyDesign) {
   const config=$('.cfd-config'),configActions=$('#cfd-submit').parentElement,configScroll=document.createElement('div'),configFooter=document.createElement('div');configScroll.className='cfd-config-scroll';configFooter.className='cfd-config-actions';configActions.remove();while(config.firstChild)configScroll.append(config.firstChild);configFooter.append(configActions);config.append(configScroll,configFooter);
   const flowView=initFlowView($('#cfd-flow'),id=>api('/jobs/'+id+'/flow'));
   const trigger=document.createElement('button');trigger.id='open-cfd';trigger.textContent='CFD 仿真';
-  const designTab=document.createElement('button');designTab.id='open-design';designTab.textContent='叶片设计';
+  const designTab=document.createElement('button');designTab.id='open-design';designTab.textContent='参数化设计';
   const {evaluationPanel,aiPanel,showTraining,buildBatchDataset}=initEvaluationWorkspace({getDesign,applyDesign,openDesign:()=>workspace('design'),openAI:()=>workspace('ai'),openEvaluation:()=>workspace('evaluation'),openAssistant:()=>workspace('initial'),openModelSettings:()=>{workspace('initial');$('#initial-model-settings').click();}});
-  const aiTab=document.createElement('button');aiTab.id='open-ai';aiTab.textContent='AI 预测';
+  const aiTab=document.createElement('button');aiTab.id='open-ai';aiTab.textContent='AI 推理';
   const evaluationTab=document.createElement('button');evaluationTab.id='open-evaluation';evaluationTab.textContent='评估与优化';
   const tabs=document.createElement('nav');tabs.className='workspace-tabs';tabs.setAttribute('aria-label','工作区切换');tabs.setAttribute('role','tablist');tabs.append(designTab,trigger,aiTab,evaluationTab);$('.header-actions').before(tabs);
   const design=$('main'),title=$('.workspace-title');design.id='design-workspace';design.setAttribute('role','tabpanel');design.setAttribute('aria-labelledby','open-design');host.setAttribute('role','tabpanel');host.setAttribute('aria-labelledby','open-cfd');
