@@ -45,7 +45,7 @@ export async function sessionFetch(url,options={}){
 function render(){
   if(!dialog)return;const $=s=>dialog.querySelector(s),setup=state?.setup_required,auth=!!state?.authenticated,creating=setup||register;
   $('#session-title').textContent=auth?'我的账号':setup?'创建管理员账号':register?'邀请码注册':'登录 AeroBlade';
-  $('#session-intro').textContent=auth?`${state.username} · ${state.role==='admin'?'管理员':'普通用户'}。模型配置与个人数据属于当前账号。`:register?'使用管理员提供的一次性邀请码创建自己的账号。':'登录后访问自己的模型配置、设计方案与对话。';
+  $('#session-intro').textContent=auth?`${state.username} · ${state.role==='admin'?'管理员':'普通用户'}。模型配置与个人数据属于当前账号。`:register?'使用管理员提供的邀请码创建自己的账号。':'登录后访问自己的模型配置、设计方案与对话。';
   $('#session-form').hidden=auth||!!(setup&&!state.setup_allowed);$('#session-logout').hidden=!auth;$('#session-password-form').hidden=!auth;
   $('#session-confirm-row').hidden=!creating;$('#session-confirm').required=!!creating;
   $('#session-invite-row').hidden=!register||setup;$('#session-invite').required=register&&!setup;

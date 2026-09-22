@@ -15,7 +15,7 @@ class StateStore:
         self.lock=threading.RLock()
         with self.transaction():
             version=self.db.execute('PRAGMA user_version').fetchone()[0]
-            if version>1:raise ValueError('Database version is newer than this application')
+            if version>2:raise ValueError('Database version is newer than this application')
             self.db.execute('CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt BLOB NOT NULL,digest BLOB NOT NULL,role TEXT NOT NULL,disabled INTEGER NOT NULL DEFAULT 0,created_at REAL NOT NULL)')
             self.db.execute('CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT)')
             self.db.execute('CREATE TABLE IF NOT EXISTS failures(bucket TEXT PRIMARY KEY,count INTEGER,since REAL)')
@@ -35,6 +35,11 @@ class StateStore:
                 self.db.execute('DROP TABLE IF EXISTS sessions')
                 self.db.execute('PRAGMA user_version=1')
             self.db.execute('CREATE TABLE IF NOT EXISTS sessions(digest TEXT PRIMARY KEY,user_id TEXT,csrf TEXT,expires REAL)')
+            if version<2:
+                self.db.execute('ALTER TABLE invites ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 10')
+                self.db.execute('ALTER TABLE invites ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0')
+                self.db.execute('UPDATE invites SET used_count=CASE WHEN used_by IS NULL THEN 0 ELSE 1 END')
+                self.db.execute('PRAGMA user_version=2')
     @contextmanager
     def transaction(self):
         with self.lock:
@@ -81,12 +86,12 @@ class StateStore:
             self.require_user(admin_id,True)
             now=time.time();code=secrets.token_urlsafe(32);iid=secrets.token_hex(16)
             self.db.execute('INSERT INTO invites(id,digest,created_by,created_at,expires_at) VALUES(?,?,?,?,?)',(iid,hashlib.sha256(code.encode()).hexdigest(),admin_id,now,now+expires_in))
-        return {'id':iid,'code':code,'expires_at':now+expires_in}
+        return {'id':iid,'code':code,'expires_at':now+expires_in,'max_uses':10,'used_count':0}
     def list_invites(self,admin_id):
         with self.lock:
             self.require_user(admin_id,True)
-            rows=self.db.execute('SELECT id,created_at,expires_at,revoked,used_by FROM invites ORDER BY created_at DESC LIMIT 200').fetchall()
-        return [dict(zip(('id','created_at','expires_at','revoked','used_by'),r)) for r in rows]
+            rows=self.db.execute('SELECT id,created_at,expires_at,revoked,used_by,max_uses,used_count FROM invites ORDER BY created_at DESC LIMIT 200').fetchall()
+        return [dict(zip(('id','created_at','expires_at','revoked','used_by','max_uses','used_count'),r)) for r in rows]
     def revoke_invite(self,admin_id,iid):
         with self.transaction():
             self.require_user(admin_id,True)
@@ -94,16 +99,16 @@ class StateStore:
     def register(self,username,password,invite,address):
         self.throttle('register-global',200);self.throttle('register:'+str(address),30)
         username=self.credentials(username,password)
-        if not isinstance(invite,str) or not 20<=len(invite)<=100:raise AuthError('邀请码无效或已使用',400)
+        if not isinstance(invite,str) or not 20<=len(invite)<=100:raise AuthError('邀请码无效、已过期或使用次数已满',400)
         digest=hashlib.sha256(invite.encode()).hexdigest()
         with self.lock:
-            if not self.db.execute('SELECT 1 FROM invites WHERE digest=? AND revoked=0 AND used_by IS NULL AND expires_at>?',(digest,time.time())).fetchone():raise AuthError('邀请码无效或已使用',400)
+            if not self.db.execute('SELECT 1 FROM invites WHERE digest=? AND revoked=0 AND used_count<max_uses AND expires_at>?',(digest,time.time())).fetchone():raise AuthError('邀请码无效、已过期或使用次数已满',400)
         salt=secrets.token_bytes(16);hashed=self.password_digest(password,salt);uid=secrets.token_hex(16)
         try:
             with self.transaction():
                 if not self.initialized():raise AuthError('管理员尚未初始化',403)
-                used=self.db.execute('UPDATE invites SET used_by=?,used_at=? WHERE digest=? AND used_by IS NULL AND revoked=0 AND expires_at>?',(uid,time.time(),digest,time.time()))
-                if used.rowcount!=1:raise AuthError('邀请码无效或已使用',400)
+                used=self.db.execute('UPDATE invites SET used_by=?,used_at=?,used_count=used_count+1 WHERE digest=? AND used_count<max_uses AND revoked=0 AND expires_at>?',(uid,time.time(),digest,time.time()))
+                if used.rowcount!=1:raise AuthError('邀请码无效、已过期或使用次数已满',400)
                 self.db.execute('INSERT INTO users VALUES(?,?,?,?,?,0,?)',(uid,username,salt,hashed,'user',time.time()))
         except sqlite3.IntegrityError:raise AuthError('用户名已存在',409) from None
         return self.user(uid)
