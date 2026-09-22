@@ -84,7 +84,11 @@ class StateStore:
         if type(expires_in) is not int or not 60<=expires_in<=604800:raise AuthError('邀请码有效期须为1分钟至7天',400)
         with self.transaction():
             self.require_user(admin_id,True)
-            now=time.time();code=secrets.token_urlsafe(32);iid=secrets.token_hex(16)
+            now=time.time();iid=secrets.token_hex(16)
+            for _ in range(5):
+                code=''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(8))
+                if not self.db.execute('SELECT 1 FROM invites WHERE digest=?',(hashlib.sha256(code.encode()).hexdigest(),)).fetchone():break
+            else:raise AuthError('邀请码生成繁忙，请重试',503)
             self.db.execute('INSERT INTO invites(id,digest,created_by,created_at,expires_at) VALUES(?,?,?,?,?)',(iid,hashlib.sha256(code.encode()).hexdigest(),admin_id,now,now+expires_in))
         return {'id':iid,'code':code,'expires_at':now+expires_in,'max_uses':10,'used_count':0}
     def list_invites(self,admin_id):
@@ -99,7 +103,12 @@ class StateStore:
     def register(self,username,password,invite,address):
         self.throttle('register-global',200);self.throttle('register:'+str(address),30)
         username=self.credentials(username,password)
-        if not isinstance(invite,str) or not 20<=len(invite)<=100:raise AuthError('邀请码无效、已过期或使用次数已满',400)
+        if not isinstance(invite,str):raise AuthError('邀请码格式无效',400)
+        invite=invite.strip()
+        if len(invite)==8:
+            invite=invite.upper()
+            if not re.fullmatch('[A-HJ-NP-Z2-9]{8}',invite):raise AuthError('邀请码格式无效',400)
+        elif not 20<=len(invite)<=100:raise AuthError('邀请码格式无效',400)
         digest=hashlib.sha256(invite.encode()).hexdigest()
         with self.lock:
             if not self.db.execute('SELECT 1 FROM invites WHERE digest=? AND revoked=0 AND used_count<max_uses AND expires_at>?',(digest,time.time())).fetchone():raise AuthError('邀请码无效、已过期或使用次数已满',400)

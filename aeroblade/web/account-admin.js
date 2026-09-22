@@ -5,7 +5,7 @@ function el(tag,text){const node=document.createElement(tag);if(text!==undefined
 export async function openAdmin(){
   await ensureSession();if(currentSession()?.role!=='admin')throw Error('需要管理员权限');
   if(!dialog){
-    dialog=el('dialog');dialog.className='session-dialog account-admin';dialog.innerHTML='<div class="session-heading"><h2>用户与邀请码</h2><button data-close aria-label="关闭">×</button></div><button data-create class="primary">生成邀请码</button><p>邀请码有效期7天，最多注册10个账号。</p><div data-code hidden><label>新邀请码（仅此次显示）<input readonly autocomplete="off"></label><button data-copy>复制邀请码</button></div><p data-message role="status"></p><h3>邀请码</h3><div data-invites></div><h3>用户</h3><div data-users></div>';document.body.append(dialog);
+    dialog=el('dialog');dialog.className='session-dialog account-admin';dialog.innerHTML='<div class="session-heading"><h2>用户与邀请码</h2><button data-close aria-label="关闭">×</button></div><button data-create class="primary">生成邀请码</button><p>8位邀请码，有效期7天，最多注册10个账号。</p><div data-code hidden><label>新邀请码（仅此次显示）<input readonly autocomplete="off"></label><button data-copy>复制邀请码</button></div><p data-message role="status"></p><h3>邀请码</h3><div data-invites></div><h3>用户</h3><div data-users></div>';document.body.append(dialog);
     dialog.querySelector('[data-close]').onclick=()=>dialog.close();
     dialog.addEventListener('close',()=>{serial++;dialog.querySelector('[data-code] input').value='';dialog.querySelector('[data-code]').hidden=true;});
     document.addEventListener('aeroblade:sessionchange',()=>{if(dialog.open)dialog.close();});

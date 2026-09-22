@@ -9,6 +9,19 @@ class MultiUserStoreTests(unittest.TestCase):
     def tearDown(self):self.s.close();self.tmp.cleanup()
     def register(self,name='alice'):
         return self.s.register(name,'user-password-123',self.s.create_invite(self.admin)['code'],'test')
+    def test_short_code_and_case_insensitive_input(self):
+        inv=self.s.create_invite(self.admin)
+        self.assertRegex(inv['code'],r'^[A-HJ-NP-Z2-9]{8}$')
+        self.s.register('alice','user-password-123','  '+inv['code'].lower()+'  ','test')
+    def test_existing_long_invitation_still_works(self):
+        inv=self.s.create_invite(self.admin);legacy='AbCdEFghij_KLMnop-qrstUVWxyz1234567890abcdefg'
+        self.s.db.execute('UPDATE invites SET digest=? WHERE id=?',(hashlib.sha256(legacy.encode()).hexdigest(),inv['id']));self.s.db.commit()
+        self.s.register('legacy','user-password-123',legacy,'test')
+    def test_short_code_collision_retries(self):
+        from unittest.mock import patch
+        with patch('session_store.secrets.choice',side_effect=list('A'*16+'B'*8)):
+            first=self.s.create_invite(self.admin);second=self.s.create_invite(self.admin)
+        self.assertEqual(first['code'],'AAAAAAAA');self.assertEqual(second['code'],'BBBBBBBB')
     def test_invite_is_private_and_limited_to_ten_uses(self):
         inv=self.s.create_invite(self.admin);u=self.s.register('Alice','user-password-123',inv['code'],'test')
         self.assertEqual(u['role'],'user');self.assertNotIn(inv['code'],json.dumps(self.s.list_invites(self.admin)))
