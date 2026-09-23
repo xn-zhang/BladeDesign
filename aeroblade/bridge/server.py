@@ -1,4 +1,4 @@
-"""Run behind an owner-managed HTTPS reverse proxy. Python 3.10+, no pip dependencies."""
+"""Run locally, on a private HTTP LAN, or behind an HTTPS reverse proxy. Python 3.10+, no pip dependencies."""
 import signal
 from http.cookies import SimpleCookie, CookieError
 import argparse, hmac, http.server, json, mimetypes, os, pathlib, re, shutil, urllib.parse
@@ -6,6 +6,7 @@ from core import Manager, ROOT, QueueFullError
 from design_assistant import ModelService, ModelError
 from session_store import StateStore, AuthError, COOKIE_NAME, SESSION_SECONDS
 
+from deployment_origin import validate_public_origin
 from user_services import UserServices
 from account_routes import dispatch as account_dispatch, fields
 
@@ -75,7 +76,7 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/aeroblade.zip':'aeroblade.zip'}
                 for name in ('design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css'):
                     allow['/'+name]=name
-                for name in ('session.js','session.css','session-state.js','account-admin.js','personal-workspace.js','personal-workspace.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
+                for name in ('deployment-origin.js','session.js','session.css','session-state.js','account-admin.js','personal-workspace.js','personal-workspace.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
                 if path not in allow:raise KeyError('Not found')
                 self.send_file(ROOT/('dist' if path=='/aeroblade.zip' else 'web')/allow[path]);return
             if path in ('/api/session','/api/session/login','/api/session/setup','/api/session/logout','/api/session/register'):
@@ -208,9 +209,9 @@ def main():
     if token and len(token)<24:parser.error('AEROBLADE_API_TOKEN must contain at least 24 characters when configured')
     public_origin=os.environ.get('AEROBLADE_PUBLIC_ORIGIN','').rstrip('/')
     if public_origin:
-        parsed=urllib.parse.urlsplit(public_origin)
-        if parsed.scheme!='https' or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username is not None or parsed.password is not None:parser.error('AEROBLADE_PUBLIC_ORIGIN must be an HTTPS origin without path or credentials')
-    if args.host not in ('127.0.0.1','localhost','::1') and not public_origin:parser.error('Set AEROBLADE_PUBLIC_ORIGIN to the HTTPS website origin for remote deployment')
+        try:validate_public_origin(public_origin)
+        except ValueError as e:parser.error(str(e))
+    if args.host not in ('127.0.0.1','localhost','::1') and not public_origin:parser.error('Set AEROBLADE_PUBLIC_ORIGIN to the browser origin (HTTPS or private-IP HTTP) for remote deployment')
     state=StateStore(args.data_dir/'state.sqlite3')
     if not state.initialized() and os.environ.get('AEROBLADE_ADMIN_PASSWORD'):
         try:state.create_admin(os.environ.get('AEROBLADE_ADMIN_USERNAME','admin'),os.environ['AEROBLADE_ADMIN_PASSWORD'])

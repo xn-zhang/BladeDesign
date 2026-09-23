@@ -18,6 +18,172 @@ python -X utf8 aeroblade/bridge/server.py --model-only --host 127.0.0.1 --port 8
 
 模型地址、模型名和供应商 API Key 保存在数据库中；API Key 不加密存储，因此应限制私有目录的操作系统访问权限，并将备份作为敏感文件保护。程序设置数据库文件的POSIX权限为0600，首次创建私有目录为0700；Windows还应使用所在账号的目录ACL。静态服务和发布包不会公开此目录。
 
+## 局域网 / 内网 IP＋HTTP 部署
+
+内网部署不需要域名或 HTTPS 证书。支持 `10.x.x.x`、`172.16.x.x`–`172.31.x.x`、`192.168.x.x` 的 IPv4 地址，以及本机回环地址。公网地址和普通域名仍使用 HTTPS。下面以服务器内网 IP `192.168.1.20` 为例；请替换为实际 IP，并固定该 IP 或配置 DHCP 地址保留。
+
+| 方式 | 用户浏览器地址 | Python 后端监听 | 需要安装代理 |
+| --- | --- | --- | --- |
+| 直接访问 | `http://192.168.1.20:8787` | `192.168.1.20:8787` 或 `0.0.0.0:8787` | 否 |
+| Nginx/Caddy 同机转发 | `http://192.168.1.20` | `127.0.0.1:8787` | 二选一 |
+
+`127.0.0.1` 只能被服务器本机访问。**同机代理转发时后端可以并建议保留在 `127.0.0.1`；其他电脑直接连接 Python 服务时，必须监听内网 IP 或 `0.0.0.0`。** `0.0.0.0` 是监听地址，不是浏览器访问地址。若代理在其他机器或隔离容器中，代理的 `127.0.0.1` 不指向宿主机后端，应改用可达的后端地址。
+
+### 1. 准备与初始化（两种方式共用）
+
+服务器需要 Python 3.10+；保存设计的几何校验还需要 `node` 命令。以下为 Ubuntu/Linux Bash 命令，在仓库根目录执行：
+
+```bash
+export AEROBLADE_DATA_DIR="$HOME/.local/share/aeroblade"
+mkdir -p "$AEROBLADE_DATA_DIR"
+chmod 700 "$AEROBLADE_DATA_DIR"
+export AEROBLADE_ADMIN_USERNAME='admin'
+read -rsp '初始管理员密码（至少12位）: ' AEROBLADE_ADMIN_PASSWORD; echo
+export AEROBLADE_ADMIN_PASSWORD
+```
+
+已有数据库时沿用原数据目录，不要创建新目录来替代旧库。管理员变量只初始化空数据库；已有账号不会被覆盖。首次内网部署必须通过上述环境变量初始化管理员，内网页面不开放首次管理员创建。普通用户仍通过管理员生成的8位邀请码注册，每个邀请码最多使用10次、7天有效。
+
+### 2A. 直接访问，无需 Nginx/Caddy
+
+```bash
+export AEROBLADE_PUBLIC_ORIGIN='http://192.168.1.20:8787'
+python3 aeroblade/bridge/server.py --model-only --host 192.168.1.20 --port 8787
+```
+
+其他电脑打开 `http://192.168.1.20:8787/` 即可使用前端、登录和模型接口。也可将 `--host` 改为 `0.0.0.0`，但这会监听所有 IPv4 网卡。防火墙只允许实际内网网段访问8787端口，例如已使用 UFW 时：
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 8787 proto tcp
+```
+
+### 2B. 同机代理入口，后端保留 127.0.0.1
+
+启动后端（注意来源中没有8787端口，因为用户访问代理80端口）：
+
+```bash
+export AEROBLADE_PUBLIC_ORIGIN='http://192.168.1.20'
+python3 aeroblade/bridge/server.py --model-only --host 127.0.0.1 --port 8787
+```
+
+然后选择下面的 **Nginx 或 Caddy 之一**。二者不要同时占用同一个80端口。代理转发整个站点，包括静态页面和 `/api/*`，无需另行构建前端或使用 Vercel。
+
+#### Nginx 配置
+
+```bash
+sudo apt update
+sudo apt install nginx
+sudo nano /etc/nginx/conf.d/aeroblade.conf
+```
+
+写入配置，将两处 IP 替换为实际服务器内网 IP：
+
+```nginx
+server {
+    listen 192.168.1.20:80;
+    server_name 192.168.1.20;
+    client_max_body_size 2m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_buffering off;
+    }
+}
+```
+
+检查并启动 / 加载配置：
+
+```bash
+sudo nginx -t
+sudo systemctl enable --now nginx
+sudo systemctl reload nginx
+```
+
+若已有站点配置使用相同 IP 和端口，先合并配置，避免重复定义。转发保留浏览器的 `Origin` 和 Cookie；不要将 `Origin` 强制改成后端地址。
+
+#### Caddy 配置
+
+Ubuntu 软件源提供 Caddy 时可安装：
+
+```bash
+sudo apt update
+sudo apt install caddy
+sudo nano /etc/caddy/Caddyfile
+```
+
+在 Caddyfile 中添加以下站点；已有站点时保留原配置：
+
+```caddyfile
+http://192.168.1.20 {
+    bind 192.168.1.20
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+站点地址必须明确写 `http://`，此入口不需要证书或 HTTPS 重定向。
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl enable --now caddy
+sudo systemctl reload caddy
+```
+
+两种代理均通过 `http://192.168.1.20/` 访问。若使用 UFW，只需允许内网访问80端口；后端8787端口不需要开放：
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 80 proto tcp
+```
+
+### 后端常驻运行（可选 systemd）
+
+上面的 Python 命令在当前终端运行，关闭终端后应改由服务管理器运行。先完成一次管理员初始化并停止前台进程，然后创建 `/etc/systemd/system/aeroblade.service`，替换 `ubuntu`、仓库路径、数据目录和入口来源：
+
+```ini
+[Unit]
+Description=AeroBlade
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/BladeDesign
+Environment=AEROBLADE_DATA_DIR=/home/ubuntu/.local/share/aeroblade
+Environment=AEROBLADE_PUBLIC_ORIGIN=http://192.168.1.20
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/ubuntu/BladeDesign/aeroblade/bridge/server.py --model-only --host 127.0.0.1 --port 8787
+Restart=on-failure
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+```
+
+这份服务配置用于同机代理。直接访问时将 `--host` 改为内网 IP，并将来源改成 `http://内网IP:8787`。确保服务账号能读写数据目录及所需运行目录，且服务环境可以找到 `node`。数据库已初始化后，不必在服务文件中保留管理员密码。
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now aeroblade
+sudo systemctl status aeroblade --no-pager
+# 排错
+sudo journalctl -u aeroblade -n 80 --no-pager
+```
+
+### 验证与使用范围
+
+- 用另一台内网电脑打开入口，登录管理员，创建邀请码，再用独立浏览器会话注册普通用户，验证模型配置、保存设计和重新登录后加载数据。
+- 出现 `Origin is not allowed` 时，核对 `AEROBLADE_PUBLIC_ORIGIN` 是否与浏览器协议、IP、端口完全一致；不要填后端的 `127.0.0.1` 或监听用的 `0.0.0.0`。
+- 代理返回502时，检查 Python 服务是否运行，并在服务器执行 `curl http://127.0.0.1:8787/api/session`。
+- HTTP 下 Cookie 保留 HttpOnly、SameSite 与 CSRF 校验，不设置 Secure；HTTPS 部署仍设置 Secure。账号权限和个人数据隔离保持有效。
+- HTTP 不加密浏览器到服务器的密码、会话及提交的模型 Key。仅用于信任的内网；一键复制可能受浏览器限制，可选中邀请码手动复制。
+- 内网用户应使用内网入口加载整个站点。Vercel 公网前端不能通过这里的配置自动访问你的私有网络；原有 Vercel 部署仍要求可达的 HTTPS 后端。
+- `--model-only` 不启动 OpenFOAM。需要 CFD 时按计算服务安装说明准备环境，并去掉该参数；HTTP 工作台支持连接内网 IP 的 HTTP 计算服务。
+
 ## 独立模型后端 / 远程网站
 
 后端部署到有持久磁盘的主机或容器，HTTPS由可信反向代理终止。启动环境示例（值由部署者设置，不提交真实密码）：
@@ -30,7 +196,7 @@ export AEROBLADE_ADMIN_PASSWORD='替换为你的强密码，至少12个字符'
 python3 aeroblade/bridge/server.py --model-only --host 0.0.0.0 --port 8787
 ```
 
-- `AEROBLADE_PUBLIC_ORIGIN` 是**浏览器访问的前端网站来源**，只含协议、域名和可选端口，不含路径。远程部署要求HTTPS来源；在HTTPS网站上Cookie带Secure属性。
+- `AEROBLADE_PUBLIC_ORIGIN` 是**浏览器访问的前端网站来源**，只含协议、域名和可选端口，不含路径。公网部署要求HTTPS来源；内网 IPv4 支持HTTP，具体步骤见上文。在HTTPS网站上Cookie带Secure属性。
 - 管理员环境变量只在数据库尚无管理员时初始化账号，不会在每次重启时覆盖已创建的账号。账号初始化后可以从部署环境移除密码变量。管理员在界面生成邀请码，普通用户不会继承服务器模型密钥。
 - `AEROBLADE_DATA_DIR` 必须挂载持久卷。不要放在容器临时目录或serverless临时文件系统；容器更新时保留此目录。
 - 模型初始化环境变量沿用 `AEROBLADE_LLM_GENERAL_*` / `AEROBLADE_LLM_DOMAIN_*`。数据库已有保存记录时优先使用数据库；清除模型配置也持久生效，不会在下一次启动时被环境默认值覆盖。

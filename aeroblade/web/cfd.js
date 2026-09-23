@@ -1,3 +1,4 @@
+import {canConnectService} from './deployment-origin.js';
 import {initPersonalWorkspace} from './personal-workspace.js';
 import {isPritchard,analyze,validate} from './geometry.js';
 import {initFlowView} from './flow-view.js';
@@ -46,7 +47,7 @@ export function initCFD(getDesign,applyDesign) {
   tabs.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const current=workspaces.findIndex(([id])=>id===document.body.dataset.workspace);const index=e.key==='Home'?0:e.key==='End'?workspaces.length-1:(current+(e.key==='ArrowRight'?1:-1)+workspaces.length)%workspaces.length;workspace(workspaces[index][0]);workspaces[index][1].focus();}});
   workspace('initial');
   initBatchWorkflow({getDesign,applyDesign,initialPanel,cfdPanel:host,aiPanel,openCFD:()=>workspace('cfd'),openAI:()=>workspace('ai'),showTraining,buildBatchDataset});
-  if(['localhost','127.0.0.1'].includes(location.hostname))$('#cfd-url').value=location.origin;
+  $('#cfd-url').value=location.origin;
   function message(text,error=false){$('#cfd-message').textContent=text;$('#cfd-message').className=error?'error':'';}
   function snapshot(){const p=getDesign();$('#cfd-snapshot').textContent=isPritchard(p)?`Pritchard 1985 · 轴向弦长 ${p.axialChord.toFixed(3)} mm · 节距 ${analyze(p).pitch.toFixed(3)} mm · 拉伸展宽 ${p.height} mm`:`旧模型 · 弦长 ${p.chord} mm · 叶高 ${p.height} mm · 扭转 ${p.twist}°`;
     dirty=!!selected&&(Object.keys(selected.parameters||{}).length!==Object.keys(p).length||Object.keys(p).some(k=>selected.parameters?.[k]!==p[k]));$('#cfd-dirty').hidden=!dirty;}
@@ -89,7 +90,7 @@ export function initCFD(getDesign,applyDesign) {
   $('#cfd-connect').onclick=async()=>{
     resetConnection();const gen=generation;$('#cfd-connect').disabled=true;message('正在检测真实求解环境…');
     try {const url=new URL($('#cfd-url').value.trim());if(url.username||url.password||url.search||url.hash)throw Error('请填写不含凭据、查询参数或片段的服务地址');
-      if(url.protocol!=='https:'&&!(location.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)&&url.protocol==='http:'))throw Error('在线平台需要 HTTPS 求解地址；本地 HTTP 工作台仅可连接本机 HTTP 服务');
+      if(!canConnectService(url,location.protocol))throw Error('HTTPS 页面需要 HTTPS 求解地址；HTTP 工作台也支持内网 IP 或本机 HTTP 服务');
       const token=$('#cfd-token').value.trim(),cookie=url.origin===location.origin&&!token;if(!cookie&&token.length<24)throw Error('独立 CFD 服务需要至少24个字符的服务令牌；同源服务可留空并使用登录会话');
       const session={url:url.href.replace(/\/$/,''),token,cookie};const data=await api('/health',{},session);if(gen!==generation)return;
       if(data.model_only)throw Error('当前后端仅提供模型服务，请填写独立 CFD 服务器地址及其服务令牌');

@@ -50,6 +50,33 @@ class SessionAPITests(unittest.TestCase):
         self.setup_account()
         self.assertTrue(self.request('/api/health')[2]['model_only'])
         self.assertEqual(self.request('/api/jobs')[0],503)
+    def test_lan_http_proxy_login_registration_and_csrf(self):
+        self.http.shutdown();self.http.server_close()
+        self.store.create_admin('admin','fixture-password-123')
+        origin='http://192.168.1.20'
+        self.http=make_server('127.0.0.1',0,None,'',set(),state=self.store,public_origin=origin,allow_setup=True)
+        threading.Thread(target=self.http.serve_forever,daemon=True).start()
+        self.base=f'http://127.0.0.1:{self.http.server_port}'
+        code,headers,admin=self.request('/api/session/login',{'username':'admin','password':'fixture-password-123'},origin=origin)
+        self.assertEqual(code,200)
+        self.assertNotIn('; Secure',headers['Set-Cookie'])
+        self.assertIn('HttpOnly',headers['Set-Cookie'])
+        self.assertIn('SameSite=Lax',headers['Set-Cookie'])
+        self.assertEqual(self.request('/api/session/setup',{'username':'other','password':'fixture-password-123'},origin=origin)[0],403)
+        self.assertEqual(self.request('/api/admin/invites',{},origin=origin)[0],403)
+        code,_,invite=self.request('/api/admin/invites',{},csrf=admin['csrf'],origin=origin)
+        self.assertEqual(code,200)
+        self.request('/api/session/logout',{},csrf=admin['csrf'],origin=origin)
+        code,_,user=self.request('/api/session/register',{'username':'tester','password':'fixture-password-123','invite':invite['code']},origin=origin)
+        self.assertEqual(code,200)
+        self.assertEqual(user['role'],'user')
+        self.assertEqual(self.request('/api/design-assistant/config',origin=origin)[0],200)
+        self.assertEqual(self.request('/api/admin/users',origin=origin)[0],403)
+        self.assertEqual(self.request('/api/session',origin='http://192.168.1.21')[0],403)
+        with self.client.open(self.base+'/deployment-origin.js') as response:
+            self.assertEqual(response.status,200)
+        self.assertEqual(self.request('/api/session/logout',{},csrf=user['csrf'],origin=origin)[0],200)
+
     def test_public_deployment_disallows_setup_and_sets_secure_cookie(self):
         self.http.shutdown();self.http.server_close()
         self.store.create_admin('admin','fixture-password-123')

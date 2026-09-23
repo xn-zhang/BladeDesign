@@ -4,7 +4,7 @@ AeroBlade 是一个本地运行的叶片参数化设计与 OpenFOAM CFD 工作�
 
 邀请码注册、个人模型配置与设计/对话保存见 [多用户测试指南](aeroblade/docs/MULTI_USER.md)。
 
-账号登录、模型配置持久化，以及本地/独立后端/Vercel前端部署说明见 [部署指南](aeroblade/docs/DEPLOYMENT.md)。模型配置无需手动填写平台令牌。
+账号登录、模型配置持久化，以及本地/独立后端/Vercel前端部署说明见 [部署指南](aeroblade/docs/DEPLOYMENT.md)。模型配置无需手动填写平台令牌。局域网支持 IP＋HTTP 直接访问，也支持 Nginx/Caddy 转发并让后端保持监听 `127.0.0.1`，配置步骤见部署指南。
 
 ## 当前功能
 
