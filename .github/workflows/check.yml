@@ -16,4 +16,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python -m pip install -r aeroblade/evaluation/requirements.txt
       - run: bash scripts/check.sh

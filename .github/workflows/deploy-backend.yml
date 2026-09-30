@@ -1,0 +1,76 @@
+name: Deploy Tencent backend
+on:
+  workflow_run:
+    workflows: ['Check source and portable package']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tencent-backend-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate manual deployment
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python -m pip install -r aeroblade/evaluation/requirements.txt
+          bash scripts/check.sh
+      - name: Test deployment safeguards
+        run: python3 -m unittest discover -s tests -p test_deploy_backend.py -v
+      - name: Skip superseded commits
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$(git rev-parse HEAD)" = "$latest" ]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main commit exists; skip this outdated deployment.'
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure restricted SSH identity
+        if: steps.revision.outputs.current == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.AEROBLADE_DEPLOY_KEY }}
+        run: |
+          test -n "$DEPLOY_KEY" || { echo 'Missing repository secret AEROBLADE_DEPLOY_KEY'; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/aeroblade_deploy
+          chmod 600 ~/.ssh/aeroblade_deploy
+          printf '%s\n' '43.128.67.249 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFzOZn7dUg9Y93QPCgdMn58fkRvY8+rjwQ9+6MIkRxVn' > ~/.ssh/known_hosts
+      - name: Deploy tested commit
+        if: steps.revision.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          git archive --format=tar "$sha" > "$RUNNER_TEMP/backend.tar"
+          checksum=$(sha256sum "$RUNNER_TEMP/backend.tar" | cut -d ' ' -f 1)
+          ssh -i ~/.ssh/aeroblade_deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 aeroblade-deploy@43.128.67.249 "deploy $sha $checksum" < "$RUNNER_TEMP/backend.tar"
+      - name: Verify Vercel API proxy
+        if: steps.revision.outputs.current == 'true'
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 20 https://blade-design-2.vercel.app/api/session | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("setup_required") is False and "authenticated" in d'
+      - name: Remove runner key
+        if: always()
+        run: rm -f ~/.ssh/aeroblade_deploy
