@@ -63,7 +63,7 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.req('/api/design-assistant/clear',method='POST',data={'provider':'general'})[0],200)
         self.assertEqual(self.req('/api/design-assistant/chat',method='POST',data={'provider':'general','messages':[{'role':'user','content':'hello'}]})[0],503)
     def test_model_frontend_modules_are_public_but_source_is_not(self):
-        for name in ['design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css']:
+        for name in ['design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css','chat-content.js','chat-sidebar.js','vendor/marked.js','vendor/purify.js','vendor/katex.js']:
             self.assertEqual(self.req('/'+name,token=False)[0],200)
         self.assertEqual(self.req('/bridge/design_assistant.py',token=False)[0],404)
     def test_correct_origin_and_auth_get_real_not_ready(self):

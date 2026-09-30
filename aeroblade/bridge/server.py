@@ -76,6 +76,8 @@ def make_server(host,port,manager,token,origins,model_service=None,state=None,pu
                 allow={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/geometry.js':'geometry.js','/pritchard.js':'pritchard.js','/legacy-geometry.js':'legacy-geometry.js','/cfd.js':'cfd.js','/cfd.css':'cfd.css','/workspace.css':'workspace.css','/flow-view.js':'flow-view.js','/ai.js':'ai.js','/ai.css':'ai.css','/aeroblade.zip':'aeroblade.zip'}
                 for name in ('design-assistant.js','design-assistant-client.js','design-assistant.css','model-settings.js','model-settings.css'):
                     allow['/'+name]=name
+                for name in ('chat-content.js','chat-sidebar.js','vendor/marked.js','vendor/purify.js','vendor/katex.js'):
+                    allow['/'+name]=name
                 for name in ('deployment-origin.js','session.js','session.css','session-state.js','account-admin.js','personal-workspace.js','personal-workspace.css','evaluation.js','evaluation.css','batch.js','batch-state.js','batch.css'):allow['/'+name]=name
                 if path not in allow:raise KeyError('Not found')
                 self.send_file(ROOT/('dist' if path=='/aeroblade.zip' else 'web')/allow[path]);return

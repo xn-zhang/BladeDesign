@@ -171,3 +171,13 @@ header .brand small{display:none}
 .cfd-scheduler small{font-size:12px;color:#526780}
 
 @media(min-width:1000px){#cfd-job-state small{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+
+/* The platform navigation sits above each workspace on a distinct surface. */
+body>header{
+ background:#eaf0f6;
+ border-bottom:1px solid #ccd8e4;
+ box-shadow:0 2px 7px #253b5310;
+ box-sizing:border-box;
+ position:relative;
+ z-index:2;
+}

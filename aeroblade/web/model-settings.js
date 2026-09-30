@@ -2,7 +2,8 @@ import {ensureSession,sessionFetch} from './session.js';
 export function initModelSettings({host,onChange}) {
   const dialog=document.createElement('dialog');dialog.id='model-settings';dialog.className='model-settings';
   dialog.innerHTML=`<div class="model-settings-heading"><div><span class="model-settings-kicker">MODEL CONNECTION</span><h2>模型配置</h2></div><button type="button" id="model-close" aria-label="关闭模型配置">×</button></div>
-    <p class="model-settings-intro">连接兼容 Chat Completions 的服务，通用模型与航发领域模型可分别配置。</p>
+    <p class="model-settings-intro">设置当前账号的个人模型连接。未配置时，自动使用管理员已开放的公共模型。</p>
+    <p id="model-public-info" class="model-storage-note"></p>
     <div class="model-load-row"><span>已登录 · 配置保存到当前平台服务器</span><button type="button" id="model-load">重新读取配置</button></div>
     <form id="model-form"><div class="model-fields"><div><label for="model-provider">配置对象</label><select id="model-provider"><option value="general">通用大模型</option><option value="domain">航发领域大模型</option></select></div><div><label for="model-auth">模型鉴权</label><select id="model-auth"><option value="bearer">Bearer API Key</option><option value="none">无鉴权（自部署服务）</option></select></div></div>
     <label for="model-base">模型 Base URL</label><input id="model-base" type="url" required placeholder="https://你的模型服务/v1" autocomplete="off"><p class="model-field-note">填写 API 基础地址；平台自动追加 /chat/completions。支持 HTTPS，或本机/私有 IP 的 HTTP。</p>
@@ -10,14 +11,16 @@ export function initModelSettings({host,onChange}) {
     <div class="model-fields model-options"><div><label for="model-timeout">请求超时（秒）</label><input id="model-timeout" type="number" min="5" max="120" step="1" value="45" required></div><label class="model-check" for="model-json"><input id="model-json" type="checkbox">启用 JSON 模式<span>服务支持 response_format 时开启</span></label></div>
     <p class="model-storage-note">配置保存在服务器私有数据库，重启后自动恢复。密钥不会回显或写入浏览器存储。测试只发送简短连接请求，可能消耗少量额度。</p>
     <div id="model-message" role="status" aria-live="polite">登录后自动读取已有配置，或填写新配置。</div>
-    <div class="model-settings-actions"><button type="button" id="model-clear">清除该模型配置</button><div><button type="button" id="model-test">测试连接</button><button type="submit" class="primary" id="model-save">保存并使用</button></div></div></form>
-    <div id="model-clear-confirm" hidden><p>确认从服务器删除该模型的地址和密钥？清除后需重新配置。</p><button type="button" id="model-keep">保留配置</button><button type="button" id="model-clear-do">确认清除</button></div>`;
+    <div class="model-settings-actions"><button type="button" id="model-clear">清除个人配置 / 使用公共模型</button><div><button type="button" id="model-test">测试连接</button><button type="submit" class="primary" id="model-save">保存个人模型</button></div></div></form>
+    <div id="model-clear-confirm" hidden><p>确认删除当前类型的个人模型地址和密钥？管理员已开放公共模型时，将自动使用公共配置。</p><button type="button" id="model-keep">保留配置</button><button type="button" id="model-clear-do">确认清除</button></div>`;
   host.append(dialog);
-  const $=s=>dialog.querySelector(s);let configs={},busy=false,controller=null,serial=0;
+  const $=s=>dialog.querySelector(s);let configs={},effective={},usage=null,busy=false,controller=null,serial=0;
   const message=(text,error=false)=>{$('#model-message').textContent=text;$('#model-message').classList.toggle('error',error);};
   function setBusy(value){busy=value;for(const node of dialog.querySelectorAll('input,select,button'))if(node.id!=='model-close')node.disabled=value;$('#model-key').disabled=value||$('#model-auth').value==='none';}
   function fill(provider){
     const cfg=configs[provider]||{};
+    const active=effective[provider]||{};
+    $('#model-public-info').textContent=active.source==='public'?`当前使用公共模型：${active.model}。${usage?`今日公共调用 ${usage.used} / ${usage.limit} 次。`:''}如需个人模型，请填写下方连接。`:active.public_available?'当前使用个人模型；清除个人配置可恢复公共模型。':'该类型尚无可用公共模型，请配置个人连接或联系管理员。';
     $('#model-provider').value=provider;$('#model-base').value=cfg.base_url||'';$('#model-name').value=cfg.model||'';
     $('#model-auth').value=cfg.auth||'bearer';$('#model-timeout').value=cfg.timeout||45;$('#model-json').checked=!!cfg.json_mode;
     $('#model-key').value='';$('#model-key-state').textContent=cfg.has_key?'已设置':'';
@@ -50,9 +53,9 @@ export function initModelSettings({host,onChange}) {
       if(id!==serial)return;
       if(action==='test')message(result.message||'连接成功；草稿尚未保存');
       else{
-        configs=result.providers||{};fill(selected);
+        effective=result.providers||{};configs=result.personal_providers||effective;usage=result.public_usage||null;fill(selected);
         message(action==='config'?'配置已保存到服务器，已选择此模型。':action==='clear'?'该模型配置已从服务器清除。':'服务器配置已读取，密钥不会回显。');
-        if(action==='config')onChange(selected);else if(action==='clear')onChange(null);
+        if(action==='config')onChange(selected);else if(action==='clear')onChange(effective[selected]?.configured?selected:null);
       }
     }catch(err){if(id===serial)message(err.name==='AbortError'?'请求已取消或超时；可重新测试。':err.message,true);}
     finally{clearTimeout(timeout);if(id===serial){controller=null;setBusy(false);}}
@@ -65,7 +68,7 @@ export function initModelSettings({host,onChange}) {
   $('#model-keep').onclick=()=>{$('#model-clear-confirm').hidden=true;};$('#model-clear-do').onclick=()=>void run('clear');
   $('#model-close').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{serial++;controller?.abort();controller=null;setBusy(false);$('#model-key').value='';});
-  document.addEventListener('aeroblade:sessionchange',event=>{configs={};if(dialog.open)dialog.close();});
+  document.addEventListener('aeroblade:sessionchange',event=>{configs={};effective={};usage=null;if(dialog.open)dialog.close();});
   return {
     async open(provider){
       await ensureSession();

@@ -15,12 +15,33 @@ def dispatch(h,path,principal,state,services):
         state.require_user(uid,True)
         if path=='/api/admin/invites':
             if h.command=='GET':h.send_json({'invites':state.list_invites(uid)});return True
-            if h.command=='POST':fields(h.body(),());state.throttle('invite:'+uid,100);h.send_json(state.create_invite(uid));return True
-        if path=='/api/admin/users' and h.command=='GET':h.send_json({'users':state.list_users(uid)});return True
-        match=re.fullmatch(r'/api/admin/(invites|users)/([a-f0-9]{32})/(revoke|status)',path)
+            if h.command=='POST':
+                data=fields(h.body(),(),('expires_in','max_uses'));state.throttle('invite:'+uid,100)
+                h.send_json(state.create_invite(uid,**data));return True
+        if path=='/api/admin/users' and h.command=='GET':
+            h.send_json({'users':[{**u,'public_usage':state.public_usage(u['id']) if not u['disabled'] else None} for u in state.list_users(uid)]});return True
+        if path=='/api/admin/logs' and h.command=='GET':h.send_json({'logs':state.admin_logs(uid)});return True
+        if path=='/api/admin/models':
+            if h.command=='GET':h.send_json({**services.public_models.describe(),'policy':state.model_policy()});return True
+            if h.command=='POST':h.send_json(services.configure_public(uid,h.body()));return True
+        if path=='/api/admin/models/test' and h.command=='POST':
+            state.throttle('public-model-test:'+uid,30);h.send_json(services.public_models.test(h.body()));return True
+        if path=='/api/admin/models/clear' and h.command=='POST':
+            data=fields(h.body(),('provider',));services.clear_public(uid,data['provider']);h.send_json({'ok':True});return True
+        if path=='/api/admin/model-policy' and h.command=='POST':
+            data=h.body()
+            if isinstance(data,dict) and isinstance(data.get('enabled'),dict):
+                for provider,enabled in data['enabled'].items():
+                    if enabled and not services.public_models.get_config(provider):raise ValueError('请先配置要启用的公共模型')
+                if any(data['enabled'].values()) and not data['enabled'].get(data.get('default_provider')):raise ValueError('默认模型必须已启用')
+            h.send_json(state.set_model_policy(uid,data));return True
+        match=re.fullmatch(r'/api/admin/(invites|users)/([a-f0-9]{32})/(revoke|status|update|logout)',path)
         if match and h.command=='POST':
             kind,iid,action=match.groups();data=h.body()
             if kind=='invites' and action=='revoke':fields(data,());state.revoke_invite(uid,iid)
+            elif kind=='invites' and action=='update':
+                fields(data,('expires_at','max_uses'));state.update_invite(uid,iid,data['expires_at'],data['max_uses'])
+            elif kind=='users' and action=='logout':fields(data,());state.force_logout(uid,iid)
             elif kind=='users' and action=='status':
                 fields(data,('disabled',));state.set_disabled(uid,iid,data['disabled'])
                 if data['disabled']:services.disable(iid)

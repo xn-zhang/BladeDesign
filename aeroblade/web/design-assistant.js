@@ -1,6 +1,8 @@
-import {currentSession} from './session.js';
+import {currentSession,sessionFetch,captureIdentity,checkIdentity} from './session.js';
 import {PARAMETER_FIELDS, demoReply, requestAssistant, validateProposal} from './design-assistant-client.js';
 import {initModelSettings} from './model-settings.js';
+import {composeMessage,renderRichContent} from './chat-content.js';
+import {initChatSidebar} from './chat-sidebar.js';
 
 const STORAGE_KEY = 'aeroblade-initial-design-v1';
 const MAX_MESSAGES = 60;
@@ -36,14 +38,31 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     <dialog id="initial-clear-dialog"><form method="dialog"><h2>开始新的初始设计？</h2><p>将清除本页对话、草稿与待确认方案，参数化设计工作区中的参数保持不变。</p><div class="initial-dialog-actions"><button value="cancel">保留对话</button><button value="clear" class="primary">开始新对话</button></div></form></dialog>`;
   document.querySelector('footer').before(host);
   const $=selector=>host.querySelector(selector), input=$('#initial-input'),messagesNode=$('#initial-messages');
-  let messages=[],provider='demo',candidate=null,version=0,revision=0,busy=false,controller=null,requestId=0,lastRequest=null,error='',applied=false;
+  $('#initial-send').setAttribute('aria-label','发送');$('#initial-stop').setAttribute('aria-label','停止生成');input.setAttribute('aria-describedby','initial-mode-note');
+  let messages=[],provider='demo',candidate=null,version=0,revision=0,busy=false,controller=null,requestId=0,lastRequest=null,error='',applied=false,attachments=[],capability='',fileReadId=0;
+  const attachmentList=element('div','initial-attachments');$('#initial-input').after(attachmentList);
+  const fileInput=element('input');fileInput.type='file';fileInput.accept='.txt,.md,.markdown,.csv';fileInput.multiple=true;fileInput.hidden=true;
+  const attachButton=element('button','initial-attach','＋');attachButton.type='button';attachButton.title='添加文本、Markdown 或 CSV 附件';attachButton.setAttribute('aria-label',attachButton.title);
+  $('#initial-form').append(fileInput);$('#initial-provider').before(attachButton);
+  const capabilityRow=element('div','initial-capabilities');
+  for(const label of ['需求梳理','参数初设']){const button=element('button','',label);button.type='button';button.setAttribute('aria-pressed','false');button.onclick=()=>{capability=capability===label?'':label;for(const b of capabilityRow.children)b.setAttribute('aria-pressed',String(b.textContent===capability));persist();};capabilityRow.append(button);}
+  $('#initial-reference').after(capabilityRow);
+  const preview=element('dialog','initial-attachment-preview');preview.innerHTML='<div class="session-heading"><h2></h2><button type="button" aria-label="关闭附件预览">×</button></div><pre></pre>';host.append(preview);preview.querySelector('button').onclick=()=>preview.close();
+  function renderAttachments(){attachmentList.replaceChildren();for(const file of attachments){const item=element('div','initial-attachment');const button=element('button','',`▤ ${file.name} · ${file.content.length} 字符`);button.type='button';button.onclick=()=>{preview.querySelector('h2').textContent=file.name;preview.querySelector('pre').textContent=file.content;preview.showModal();};const remove=element('button','','×');remove.type='button';remove.setAttribute('aria-label',`移除 ${file.name}`);remove.disabled=busy;remove.onclick=()=>{attachments=attachments.filter(f=>f!==file);renderAttachments();updateControls();persist();};item.append(button,remove);attachmentList.append(item);}}
+  attachButton.onclick=()=>fileInput.click();
+  fileInput.onchange=async()=>{
+    const files=[...fileInput.files],id=++fileReadId;fileInput.value='';
+    try{const next=[];for(const file of files){if(!/\.(txt|md|markdown|csv)$/i.test(file.name))throw Error('附件支持 TXT、Markdown 和 CSV。');if(file.size>48000)throw Error('单个附件最多 48 KB，正文与附件合计最多 12000 字符。');const bytes=new Uint8Array(await file.arrayBuffer());const content=new TextDecoder('utf-8',{fatal:true}).decode(bytes);if(content.includes('\0'))throw Error('附件应为 UTF-8 文本文件。');next.push({name:file.name,content});}
+      if(id!==fileReadId||busy)return;if(attachments.length+next.length>3)throw Error('最多添加 3 个附件。');composeMessage(input.value,[...attachments,...next],capability);attachments.push(...next);error='';renderAttachments();updateControls();persist();
+    }catch(err){if(id===fileReadId){error=err.message;updateControls();}}
+  };
   const settings=initModelSettings({host,onChange:selected=>{
     if(selected){provider=selected;$('#initial-provider').value=provider;}
     candidate=null;revision++;lastRequest=null;error='';applied=false;renderMessages();updateControls();persist();
   }});
 
   function persist() {
-    try { sessionStorage.setItem(STORAGE_KEY+':'+storageOwner,JSON.stringify({schema:1,messages,provider,candidate,version,revision,draft:input.value,lastRequest})); }
+    try { sessionStorage.setItem(STORAGE_KEY+':'+storageOwner,JSON.stringify({schema:1,messages,provider,candidate,version,revision,draft:input.value,lastRequest,attachments,capability})); }
     catch { $('#initial-storage-note').hidden=false;$('#initial-storage-note').textContent='当前浏览器无法保存会话；离开或刷新页面后，本页对话可能丢失。'; }
   }
   function restore() {
@@ -55,6 +74,9 @@ export function initDesignAssistant({applyDesign,openDesign}) {
       if(!data.messages.every(m=>['user','assistant'].includes(m.role)&&typeof m.content==='string'&&m.content.length<=12000))throw Error('消息格式错误');
       messages=data.messages;provider=data.provider;revision=Number.isSafeInteger(data.revision)?data.revision:0;version=Number.isSafeInteger(data.version)?data.version:0;
       input.value=typeof data.draft==='string'?data.draft.slice(0,6000):'';
+      attachments=Array.isArray(data.attachments)&&data.attachments.length<=3&&data.attachments.every(f=>typeof f.name==='string'&&f.name.length<=255&&typeof f.content==='string'&&f.content.length<=12000)?data.attachments:[];
+      capability=['需求梳理','参数初设'].includes(data.capability)?data.capability:'';
+      for(const b of capabilityRow.children)b.setAttribute('aria-pressed',String(b.textContent===capability));renderAttachments();
       if(data.candidate && data.candidate.revision===revision && data.candidate.provider===provider)candidate={...data.candidate,proposal:validateProposal(data.candidate.proposal)};
       if(data.lastRequest && messages.at(-1)?.role==='user') {lastRequest={provider,text:messages.at(-1).content};error='上次请求未完成，可重试或继续补充要求。';}
     } catch {error='之前的会话无法完整恢复，请新建对话或继续输入。';candidate=null;}
@@ -64,8 +86,10 @@ export function initDesignAssistant({applyDesign,openDesign}) {
     $('#initial-stop').hidden=!busy;$('#initial-send').hidden=busy;
     $('#initial-pending').hidden=!busy;$('#initial-provider').disabled=busy;
     $('#initial-model-settings').disabled=busy;
+    attachButton.disabled=busy;for(const b of capabilityRow.children)b.disabled=busy;renderAttachments();
+    input.style.height='auto';input.style.height=`${Math.min(180,Math.max(76,input.scrollHeight))}px`;
     $('#initial-reference').hidden=provider!=='demo';$('#initial-reference').disabled=busy||messages.length>=MAX_MESSAGES-1;
-    $('#initial-count').textContent=`${input.value.length} / 6000`;
+    $('#initial-count').textContent=attachments.length?`正文 ${input.value.length} / 6000`:`${input.value.length} / 6000`;
     $('#initial-mode-note').textContent=provider==='demo'?'参考演示仅展示交互与预设，未接入模型推理。':'通过已配置的模型服务生成建议；采用前请审阅来源与假设。';
     $('#initial-error').hidden=!error;$('#initial-error span').textContent=error;
     $('#initial-retry').hidden=!lastRequest;$('#initial-retry').disabled=busy;
@@ -95,18 +119,20 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   }
   function renderMessages() {
     messagesNode.replaceChildren();$('#initial-welcome').hidden=messages.length>0;
-    for(const message of messages){const item=element('article',`initial-message initial-${message.role}`);item.append(element('div','initial-message-author',message.role==='user'?'你':`总师智能体 · ${providerNames[message.provider]||providerNames[provider]}`),element('p','',message.content));messagesNode.append(item);}
+    host.classList.toggle('has-messages',messages.length>0);
+    for(const message of messages){const item=element('article',`initial-message initial-${message.role}`);item.append(element('div','initial-message-author',message.role==='user'?'你':`总师智能体 · ${providerNames[message.provider]||providerNames[provider]}`));if(message.role==='assistant')item.append(renderRichContent(message.content));else item.append(element('p','',message.content));messagesNode.append(item);}
     renderCandidate();
   }
   function cancelRequest(showError=true) {
     requestId++;controller?.abort();controller=null;busy=false;
     if(showError){error='已停止生成。可重试当前请求，或继续输入。';updateControls();persist();}
   }
-  async function send(text,retry=false) {
-    text=text.trim();if(busy||!text||text.length>6000)return;
+  async function send(text,retry=false,referenceAction=false) {
+    text=text.trim();if(busy||!text||text.length>(retry?12000:6000))return;
+    if(!retry&&!referenceAction){try{text=composeMessage(text,attachments,capability);}catch(err){error=err.message;updateControls();return;}}
     if(!retry&&messages.length>=MAX_MESSAGES-1)return;
     revision++;candidate=null;applied=false;error='';
-    if(!retry){messages.push({role:'user',content:text});input.value='';}
+    if(!retry){messages.push({role:'user',content:text});if(!referenceAction){input.value='';attachments=[];fileReadId++;renderAttachments();}}
     lastRequest={text,provider};busy=true;controller=new AbortController();const signal=controller.signal,id=++requestId;
     renderMessages();updateControls();scrollLatest();persist();
     let timeout;
@@ -131,25 +157,39 @@ export function initDesignAssistant({applyDesign,openDesign}) {
   $('#initial-form').onsubmit=e=>{e.preventDefault();void send(input.value);};
   input.oninput=()=>{updateControls();persist();};
   input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();void send(input.value);}};
-  $('#initial-reference').onclick=()=>void send('载入参考方案');
+  $('#initial-reference').onclick=()=>void send('载入参考方案',false,true);
   $('#initial-stop').onclick=()=>cancelRequest();
   $('#initial-retry').onclick=()=>{if(lastRequest)void send(lastRequest.text,true);};
   $('#initial-skip').onclick=()=>openDesign();
   $('#initial-model-settings').onclick=async()=>{try{await settings.open(provider);}catch(err){error=err.message;updateControls();}};
-  document.addEventListener('aeroblade:sessionchange',e=>{cancelRequest(false);messages=[];candidate=null;version=0;revision++;lastRequest=null;error='';applied=false;provider='demo';input.value='';storageOwner=e.detail.userId||'anonymous';if(e.detail.authenticated)restore();$('#initial-provider').value=provider;renderMessages();updateControls();});
+  async function loadDefaultModel(){
+    if(!currentSession()?.authenticated||messages.length||provider!=='demo'||busy)return;
+    const identity=captureIdentity(),expectedRevision=revision;
+    try{
+      const response=await sessionFetch('/api/design-assistant/config');if(!response.ok)return;const config=await response.json();checkIdentity(identity);
+      if(revision!==expectedRevision||messages.length||provider!=='demo'||busy)return;
+      const selected=config.providers?.[config.default_provider]?.configured?config.default_provider:['general','domain'].find(p=>config.providers?.[p]?.source==='public');
+      if(selected){provider=selected;$('#initial-provider').value=selected;updateControls();persist();}
+    }catch{/* Keep the current composer usable when configuration is unavailable. */}
+  }
+  document.addEventListener('aeroblade:modelpolicychange',()=>void loadDefaultModel());
+  document.addEventListener('aeroblade:sessionchange',e=>{cancelRequest(false);fileReadId++;attachments=[];capability='';preview.close();for(const b of capabilityRow.children)b.setAttribute('aria-pressed','false');messages=[];candidate=null;version=0;revision++;lastRequest=null;error='';applied=false;provider='demo';input.value='';storageOwner=e.detail.userId||'anonymous';if(e.detail.authenticated)restore();$('#initial-provider').value=provider;renderMessages();updateControls();if(e.detail.authenticated)void loadDefaultModel();});
   $('#initial-provider').onchange=e=>{provider=e.target.value;candidate=null;revision++;lastRequest=null;error='';applied=false;renderMessages();updateControls();persist();};
-  $('#initial-new').onclick=()=>{if(!messages.length&&!input.value)return;$('#initial-clear-dialog').showModal();};
+  $('#initial-new').onclick=()=>{if(!messages.length&&!input.value&&!attachments.length){input.focus();return;}$('#initial-clear-dialog').showModal();};
   $('#initial-clear-dialog').addEventListener('close',()=>{
     if($('#initial-clear-dialog').returnValue!=='clear')return;
-    cancelRequest(false);messages=[];candidate=null;version=0;revision=0;lastRequest=null;error='';applied=false;input.value='';renderMessages();updateControls();persist();input.focus();
+    cancelRequest(false);fileReadId++;attachments=[];messages=[];candidate=null;version=0;revision++;lastRequest=null;error='';applied=false;input.value='';provider='demo';$('#initial-provider').value=provider;renderMessages();updateControls();persist();void loadDefaultModel();input.focus();
   });
   restore();$('#initial-provider').value=provider;renderMessages();updateControls();scrollLatest();
+  void loadDefaultModel();
   host.getBatchBaseline=()=>candidate&&!busy&&candidate.revision===revision?{parameters:structuredClone(candidate.proposal.parameters),provenance:{source:'initial-proposal',provider:candidate.provider,version:candidate.version,sources:structuredClone(candidate.proposal.sources)}}:null;
   host.getConversationSnapshot=()=>({schema:'aeroblade-saved-conversation-v1',messages:messages.map(({role,content})=>({role,content})),provider,candidate:candidate?.proposal||null,draft:input.value});
   host.restoreConversationSnapshot=snapshot=>{
     if(snapshot.schema!=='aeroblade-saved-conversation-v1')throw Error('对话格式无效');
     const proposal=snapshot.candidate?validateProposal(snapshot.candidate):null;
-    cancelRequest(false);messages=structuredClone(snapshot.messages);provider=snapshot.provider;revision++;candidate=proposal?{proposal,provider,revision,version:++version}:null;lastRequest=null;error='';applied=false;input.value=snapshot.draft;$('#initial-provider').value=provider;renderMessages();updateControls();persist();scrollLatest();document.querySelector('#open-initial')?.click();
+    cancelRequest(false);fileReadId++;attachments=[];messages=structuredClone(snapshot.messages);provider=snapshot.provider;revision++;candidate=proposal?{proposal,provider,revision,version:++version}:null;lastRequest=null;error='';applied=false;input.value=snapshot.draft;$('#initial-provider').value=provider;renderMessages();updateControls();persist();scrollLatest();document.querySelector('#open-initial')?.click();
   };
+  $('.initial-bottom').append($('#initial-prompts'));
+  initChatSidebar(host,{isBusy:()=>busy});
   return host;
 }

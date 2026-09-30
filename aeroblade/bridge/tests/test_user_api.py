@@ -39,4 +39,21 @@ class UserAPITests(unittest.TestCase):
   users=self.req('admin','/api/admin/users')[1]['users'];uid=next(u['id'] for u in users if u['username']=='alice')
   self.assertEqual(self.req('admin','/api/admin/users/'+uid+'/status',{'disabled':True})[0],200)
   self.assertEqual(self.req('alice','/api/design-assistant/config')[0],401)
+ def test_admin_management_routes_and_authorization(self):
+  code,data=self.req('admin','/api/session/login',{'username':'admin','password':'test-password-123'});self.csrf['admin']=data['csrf']
+  status,inv=self.req('admin','/api/admin/invites',{'expires_in':3600,'max_uses':2});self.assertEqual(status,200)
+  code,data=self.req('alice','/api/session/register',{'username':'alice','password':'test-password-123','invite':inv['code']});self.csrf['alice']=data['csrf'];uid=data['user_id']
+  import time
+  self.assertEqual(self.req('admin','/api/admin/invites/'+inv['id']+'/update',{'expires_at':int(time.time())+7200,'max_uses':3})[0],200)
+  self.assertEqual(self.req('alice','/api/admin/models')[0],403)
+  self.assertEqual(self.req('admin','/api/admin/models',{'provider':'general','base_url':'https://model.example/v1','model':'public','api_key':'public-secret'})[0],200)
+  policy={'enabled':{'general':True,'domain':False},'default_provider':'general','daily_limit':3}
+  self.assertEqual(self.req('admin','/api/admin/model-policy',policy)[0],200)
+  shared=self.req('alice','/api/design-assistant/config')[1]
+  self.assertEqual(shared['providers']['general']['source'],'public');self.assertNotIn('public-secret',json.dumps(shared))
+  self.assertEqual(self.req('admin','/api/design-assistant/config')[1]['providers']['general']['source'],'public')
+  self.assertEqual(self.req('admin','/api/admin/users/'+uid+'/logout',{})[0],200)
+  self.assertEqual(self.req('alice','/api/design-assistant/config')[0],401)
+  self.assertIn('public_model.configure',[r['action'] for r in self.req('admin','/api/admin/logs')[1]['logs']])
+  self.assertEqual(self.req('admin','/api/admin/model-policy',{**policy,'daily_limit':True})[0],400)
 if __name__=='__main__':unittest.main()

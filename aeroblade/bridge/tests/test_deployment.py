@@ -13,6 +13,13 @@ from unittest.mock import patch
 build=runpy.run_path(str(Path(__file__).resolve().parents[3]/'scripts'/'build_vercel.py'))['build']
 
 class DeploymentTests(unittest.TestCase):
+    def test_chat_renderer_vendor_assets_are_built_without_private_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);web=root/'aeroblade/web';vendor=web/'vendor';vendor.mkdir(parents=True)
+            (web/'index.html').write_text('page');(vendor/'marked.js').write_text('renderer');(vendor/'private.key').write_text('private')
+            output=build(root,'https://backend.example')
+            self.assertTrue((output/'static/vendor/marked.js').is_file())
+            self.assertFalse((output/'static/vendor/private.key').exists())
     def test_portable_package_excludes_nested_vercel_build_outputs(self):
         repo=Path(__file__).resolve().parents[3]
         package=runpy.run_path(str(repo/'aeroblade/bridge/package.py'))['package']

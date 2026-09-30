@@ -1,5 +1,6 @@
 """Private multi-user SQLite identity, invitations and model settings."""
 import hashlib,hmac,json,pathlib,re,secrets,sqlite3,threading,time
+from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
 COOKIE_NAME='aeroblade_session'
 SESSION_SECONDS=12*60*60
@@ -15,7 +16,7 @@ class StateStore:
         self.lock=threading.RLock()
         with self.transaction():
             version=self.db.execute('PRAGMA user_version').fetchone()[0]
-            if version>2:raise ValueError('Database version is newer than this application')
+            if version>3:raise ValueError('Database version is newer than this application')
             self.db.execute('CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt BLOB NOT NULL,digest BLOB NOT NULL,role TEXT NOT NULL,disabled INTEGER NOT NULL DEFAULT 0,created_at REAL NOT NULL)')
             self.db.execute('CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT)')
             self.db.execute('CREATE TABLE IF NOT EXISTS failures(bucket TEXT PRIMARY KEY,count INTEGER,since REAL)')
@@ -40,6 +41,12 @@ class StateStore:
                 self.db.execute('ALTER TABLE invites ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0')
                 self.db.execute('UPDATE invites SET used_count=CASE WHEN used_by IS NULL THEN 0 ELSE 1 END')
                 self.db.execute('PRAGMA user_version=2')
+            if version<3:
+                self.db.execute('ALTER TABLE invites ADD COLUMN updated_at REAL')
+                self.db.execute('UPDATE invites SET updated_at=created_at')
+                self.db.execute('PRAGMA user_version=3')
+            self.db.execute('CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT,action TEXT,target TEXT,detail TEXT,created_at REAL)')
+            self.db.execute('CREATE TABLE IF NOT EXISTS public_usage(user_id TEXT,day TEXT,used INTEGER,PRIMARY KEY(user_id,day))')
     @contextmanager
     def transaction(self):
         with self.lock:
@@ -80,8 +87,9 @@ class StateStore:
             row=self.db.execute('SELECT count FROM failures WHERE bucket=?',(key,)).fetchone()
             if row and row[0]>=limit:raise AuthError('请求过于频繁，请稍后重试',429)
             self.db.execute('INSERT INTO failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1',(key,now))
-    def create_invite(self,admin_id,expires_in=604800):
-        if type(expires_in) is not int or not 60<=expires_in<=604800:raise AuthError('邀请码有效期须为1分钟至7天',400)
+    def create_invite(self,admin_id,expires_in=604800,max_uses=10):
+        if type(expires_in) is not int or not 60<=expires_in<=7776000:raise AuthError('邀请码有效期须为1分钟至90天',400)
+        if type(max_uses) is not int or not 1<=max_uses<=1000:raise AuthError('使用次数须为1–1000',400)
         with self.transaction():
             self.require_user(admin_id,True)
             now=time.time();iid=secrets.token_hex(16)
@@ -89,17 +97,30 @@ class StateStore:
                 code=''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(8))
                 if not self.db.execute('SELECT 1 FROM invites WHERE digest=?',(hashlib.sha256(code.encode()).hexdigest(),)).fetchone():break
             else:raise AuthError('邀请码生成繁忙，请重试',503)
-            self.db.execute('INSERT INTO invites(id,digest,created_by,created_at,expires_at) VALUES(?,?,?,?,?)',(iid,hashlib.sha256(code.encode()).hexdigest(),admin_id,now,now+expires_in))
-        return {'id':iid,'code':code,'expires_at':now+expires_in,'max_uses':10,'used_count':0}
+            self.db.execute('INSERT INTO invites(id,digest,created_by,created_at,expires_at,max_uses,updated_at) VALUES(?,?,?,?,?,?,?)',(iid,hashlib.sha256(code.encode()).hexdigest(),admin_id,now,now+expires_in,max_uses,now))
+            self.log_admin(admin_id,'invite.create',iid,{'expires_at':now+expires_in,'max_uses':max_uses})
+        return {'id':iid,'code':code,'expires_at':now+expires_in,'max_uses':max_uses,'used_count':0}
     def list_invites(self,admin_id):
         with self.lock:
             self.require_user(admin_id,True)
-            rows=self.db.execute('SELECT id,created_at,expires_at,revoked,used_by,max_uses,used_count FROM invites ORDER BY created_at DESC LIMIT 200').fetchall()
-        return [dict(zip(('id','created_at','expires_at','revoked','used_by','max_uses','used_count'),r)) for r in rows]
+            rows=self.db.execute('SELECT id,created_at,expires_at,revoked,used_by,max_uses,used_count,updated_at FROM invites ORDER BY created_at DESC LIMIT 200').fetchall()
+        return [dict(zip(('id','created_at','expires_at','revoked','used_by','max_uses','used_count','updated_at'),r)) for r in rows]
     def revoke_invite(self,admin_id,iid):
         with self.transaction():
             self.require_user(admin_id,True)
-            if self.db.execute('UPDATE invites SET revoked=1 WHERE id=?',(iid,)).rowcount!=1:raise AuthError('邀请码不存在',404)
+            if self.db.execute('UPDATE invites SET revoked=1,updated_at=? WHERE id=?',(time.time(),iid)).rowcount!=1:raise AuthError('邀请码不存在',404)
+            self.log_admin(admin_id,'invite.revoke',iid,{})
+    def update_invite(self,admin_id,iid,expires_at,max_uses):
+        if type(expires_at) not in (int,float) or not time.time()<expires_at<=time.time()+7776000:raise AuthError('到期时间须在未来90天内',400)
+        if type(max_uses) is not int or not 1<=max_uses<=1000:raise AuthError('使用次数须为1–1000',400)
+        with self.transaction():
+            self.require_user(admin_id,True)
+            row=self.db.execute('SELECT revoked,used_count FROM invites WHERE id=?',(iid,)).fetchone()
+            if not row:raise AuthError('邀请码不存在',404)
+            if row[0]:raise AuthError('已撤销的邀请码不能修改',400)
+            if max_uses<row[1]:raise AuthError('使用上限不能低于已使用次数',400)
+            self.db.execute('UPDATE invites SET expires_at=?,max_uses=?,updated_at=? WHERE id=?',(expires_at,max_uses,time.time(),iid))
+            self.log_admin(admin_id,'invite.update',iid,{'expires_at':expires_at,'max_uses':max_uses})
     def register(self,username,password,invite,address):
         self.throttle('register-global',200);self.throttle('register:'+str(address),30)
         username=self.credentials(username,password)
@@ -157,6 +178,52 @@ class StateStore:
             if u['role']=='admin':raise AuthError('不能禁用管理员',403)
             self.db.execute('UPDATE users SET disabled=? WHERE id=?',(int(disabled),uid))
             if disabled:self.db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
+            self.log_admin(admin_id,'user.disable' if disabled else 'user.enable',uid,{})
+    def force_logout(self,admin_id,uid):
+        with self.transaction():
+            self.require_user(admin_id,True);user=self.user(uid)
+            if user['role']=='admin':raise AuthError('管理员请通过账号菜单退出登录',403)
+            self.db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
+            self.log_admin(admin_id,'user.logout',uid,{})
+    def log_admin(self,actor,action,target,detail):
+        # Call inside the same transaction as the change; details are explicit safe fields.
+        self.db.execute('INSERT INTO admin_logs(actor,action,target,detail,created_at) VALUES(?,?,?,?,?)',(actor,action,target,json.dumps(detail,ensure_ascii=False,allow_nan=False),time.time()))
+    def admin_logs(self,admin_id):
+        with self.lock:
+            self.require_user(admin_id,True)
+            rows=self.db.execute('SELECT l.id,u.username,l.action,l.target,l.detail,l.created_at FROM admin_logs l LEFT JOIN users u ON u.id=l.actor ORDER BY l.id DESC LIMIT 200').fetchall()
+            return [dict(id=r[0],actor=r[1],action=r[2],target=r[3],detail=json.loads(r[4]),created_at=r[5]) for r in rows]
+    def model_policy(self):
+        with self.lock:row=self.db.execute("SELECT value FROM settings WHERE name='public_model_policy'").fetchone()
+        return json.loads(row[0]) if row else {'enabled':{'general':False,'domain':False},'default_provider':'general','daily_limit':50}
+    def set_model_policy(self,admin_id,data):
+        if not isinstance(data,dict) or set(data)!={'enabled','default_provider','daily_limit'}:raise AuthError('模型策略字段无效',400)
+        enabled=data['enabled']
+        if not isinstance(enabled,dict) or set(enabled)!={'general','domain'} or any(type(v) is not bool for v in enabled.values()):raise AuthError('启用状态无效',400)
+        if data['default_provider'] not in ('general','domain'):raise AuthError('默认模型无效',400)
+        if type(data['daily_limit']) is not int or not 1<=data['daily_limit']<=10000:raise AuthError('每日限额须为1–10000次',400)
+        with self.transaction():
+            self.require_user(admin_id,True)
+            self.db.execute("INSERT INTO settings VALUES('public_model_policy',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(json.dumps(data),))
+            self.log_admin(admin_id,'public_model.policy','platform',data)
+        return data
+    @staticmethod
+    def usage_day():return datetime.fromtimestamp(time.time(),timezone(timedelta(hours=8))).date().isoformat()
+    def public_usage(self,uid):
+        with self.lock:
+            self.require_user(uid)
+            day=self.usage_day()
+            row=self.db.execute('SELECT used FROM public_usage WHERE user_id=? AND day=?',(uid,day)).fetchone()
+            return {'day':day,'used':row[0] if row else 0,'limit':self.model_policy()['daily_limit']}
+    def consume_public_call(self,uid,provider=None):
+        with self.transaction():
+            self.require_user(uid);policy=self.model_policy()
+            if provider and not policy['enabled'].get(provider):raise AuthError('此公共模型已停用',503)
+            day=self.usage_day()
+            row=self.db.execute('SELECT used FROM public_usage WHERE user_id=? AND day=?',(uid,day)).fetchone()
+            if row and row[0]>=policy['daily_limit']:raise AuthError('今日公共模型调用次数已达上限，请明日再试或使用个人模型',429)
+            self.db.execute('INSERT INTO public_usage VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET used=used+1',(uid,day))
+            self.db.execute('DELETE FROM public_usage WHERE day<?',((datetime.fromtimestamp(time.time(),timezone(timedelta(hours=8)))-timedelta(days=90)).date().isoformat(),))
     def change_password(self,uid,current_password,new_password):
         self.throttle('password:'+uid,10)
         self.credentials('valid-name',new_password)

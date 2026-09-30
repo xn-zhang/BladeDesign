@@ -24,6 +24,12 @@ def build(root, backend):
     for source in web.iterdir():
         if source.is_file() and not source.is_symlink() and source.suffix in ('.html','.js','.css'):
             shutil.copyfile(source,static/source.name)
+    vendor=web/'vendor'
+    if vendor.is_dir() and not vendor.is_symlink():
+        for source in vendor.iterdir():
+            if source.is_file() and not source.is_symlink() and source.suffix in ('.js','.txt','.md'):
+                (static/'vendor').mkdir(exist_ok=True)
+                shutil.copyfile(source,static/'vendor'/source.name)
     config={'version':3,'routes':[
         {'src':'/api/(.*)','dest':backend.rstrip('/')+'/api/$1','headers':{'Cache-Control':'no-store'}},
         {'handle':'filesystem'},
